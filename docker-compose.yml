@@ -4,33 +4,57 @@ networks:
     name: sdcc_network
 
 services:
-  discovery :
-    image : python
-    tty : true
+
+  client:
+    build: 
+      dockerfile: ./docker/client.dockerfile
+    tty: true
+    volumes:
+      - ./client:/src
+      - ./proto:/proto
     networks:
       - sdcc_network
+    working_dir : /src
 
-  authentication :
-    image : python
-    tty : true
-    networks:
-      - sdcc_network
-
-  edge :
-    image : python
-    tty : true
+  registry:
+    image: golang
+    tty: true
     networks:
       - sdcc_network
     volumes:
-      - type : tmpfs
-        target : /temp_storage
-        tmpfs:
-          size : 100M   ## Va per pagine di memoria principale (4k)
-      - ./edge_src:/src
+      - ./registry:/src
 
-  rabbit_mq :
-    image : rabbitmq
-    tty : true
-    networks :
+  login:
+    build: 
+      dockerfile: ./docker/login.dockerfile
+    tty: true
+    networks:
+      - sdcc_network
+    volumes:
+      - ./login:/src
+      - ./proto:/proto
+    working_dir : /src
+
+  edge:
+    #image: golang
+    build:
+      dockerfile: ./docker/edge.dockerfile
+    tty: true
+    networks:
+      - sdcc_network
+    volumes:
+      - type: tmpfs
+        target: /temp_storage
+        tmpfs:
+          size: 100M   ## Va per pagine di memoria principale (4k)
+      - ./edge:/src
+    working_dir : /src
+    
+
+  rabbit_mq:
+    image: rabbitmq
+    hostname: rabbit_mq
+    tty: true
+    networks:
       - sdcc_network
     
