@@ -36,7 +36,7 @@ services:
     working_dir : /src
 
   edge:
-    image: golang
+    image: golang:alpine
     tty: true
     networks:
       - sdcc_network
@@ -47,6 +47,14 @@ services:
           size: 100M   ## Va per pagine di memoria principale (4k)
       - ./edge:/src
     working_dir : /src
+    deploy:
+      resources:
+        limits: # Hard Limit
+          cpus: '1'
+          memory: 1.5G
+        # reservations: # Soft Limit
+        #   cpus: 0.25
+        #   memory: 128M
     
 
   rabbit_mq:

@@ -5,13 +5,21 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"strconv"
 	"strings"
 )
 
+/*
+	TODO : Logica di connessione ad altri Peer
+	TODO : Logica di heartbeat (Peer -> Registry)
+	TODO :
+*/
+
 type EdgePeer struct {
-	PeerId   int
 	PeerAddr string
 }
+
+//TODO : Risposta all'arrivo di un nuovo vicino
 
 func ActAsPeer() {
 
@@ -19,37 +27,51 @@ func ActAsPeer() {
 	ipAddr := strings.Split(addresses[1].String(), "/")[0]
 
 	EdgePeerPtr := new(EdgePeer)
-	edgeListenerPtr, err, errorMessage := registerServiceForEdge(ipAddr, EdgePeerPtr)
+	edgeListenerPtr, errorMessage, err := registerServiceForEdge(ipAddr, EdgePeerPtr)
 	utils.ExitOnError(errorMessage, err)
 
-	registryClientPtr, err, errorMessage := registerToRegistry(EdgePeerPtr)
+	registryClientPtr, errorMessage, err := registerToRegistry(EdgePeerPtr)
 	utils.ExitOnError("Impossibile registrare il servizio sul registry server", err)
+
+	//Notificare ai vicini il nuovo arrivato
+	maxValue := len(Adjacent)
+	for i = 0; i < maxValue; i++ {
+		connect(Adjacent[i], ADJ_PORT)
+	}
+
+	//-------------------
 
 	log.Println(edgeListenerPtr)
 	defer registryClientPtr.Close()
 
 }
 
-func registerToRegistry(edgePeerPtr *EdgePeer) (*rpc.Client, error, string) {
-	client, err := rpc.DialHTTP("tcp", "registry:1234")
+func connect(addr string, port int) (*rpc.Client, string, error) {
+	client, err := rpc.DialHTTP("tcp", addr+":"+strconv.Itoa(port))
 	if err != nil {
-		return nil, err, "Errore Dial HTTP"
+		return nil, "Errore Dial HTTP", err
 	}
-
-	returnPtr := new(int)
-
-	err = client.Call("RegistryService.PeerEnter", edgePeerPtr, returnPtr)
-	if err != nil {
-		return nil, err, "Errore registrazione sul Registry Server"
-	}
-
-	return client, nil, ""
+	return client, "", err
 }
 
-func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (*net.Listener, error, string) {
+func registerToRegistry(edgePeerPtr *EdgePeer) (*rpc.Client, string, error) {
+	client, err := rpc.DialHTTP("tcp", "registry:1234")
+	if err != nil {
+		return nil, "Errore Dial HTTP", err
+	}
+
+	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, Adjacent)
+	if err != nil {
+		return nil, "Errore registrazione sul Registry Server", err
+	}
+
+	return client, "", nil
+}
+
+func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (*net.Listener, string, error) {
 	err := rpc.Register(edgePeerPtr)
 	if err != nil {
-		return nil, err, "Errore registrazione del servizio"
+		return nil, "Errore registrazione del servizio", err
 	}
 
 	rpc.HandleHTTP()
@@ -57,11 +79,11 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (*net.Liste
 
 	peerListener, err := net.Listen("tcp", bindIpAddr)
 	if err != nil {
-		return nil, err, "Errore listen"
+		return nil, "Errore listen", err
 	}
 	edgePeerPtr.PeerAddr = peerListener.Addr().String()
 
-	return &peerListener, nil, ""
+	return &peerListener, "", err
 }
 
 func (p *EdgePeer) Ping(input int, replyPtr *int) error {

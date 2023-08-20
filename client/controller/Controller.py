@@ -25,4 +25,4 @@ def deleteFile(fileName : str) -> None:
 
 
 def login(username : str, passwd : str, email : str) -> bool :
-    return True
+    return username == "sae" and passwd == "admin" and email == "admin@sae.com"

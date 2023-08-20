@@ -3,17 +3,27 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
+	"sync"
 )
+
+var RAND_THR Float64 = 0.6
 
 type RegistryService int
 
 type EdgePeer struct {
-	PeerId   int
 	PeerAddr string
 }
+
+type GraphMap struct {
+	mutex   sync.RWMutex
+	peerMap map[EdgePeer]([]EdgePeer)
+}
+
+var graphMap GraphMap = GraphMap{sync.RWMutex{}, make(map[EdgePeer]([]EdgePeer))}
 
 func errorFunction(errorMessage string, err error) {
 	log.Println(errorMessage)
@@ -40,11 +50,32 @@ func main() {
 	}
 }
 
-func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *int) error {
-	fmt.Println(edgePeer.PeerAddr)
-	fmt.Println(edgePeer.PeerId)
-	*replyPtr = 0
+func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *[]EdgePeer) error {
+	graphMap.mutex.Lock()
+	defer graphMap.mutex.Unlock()
+
+	neighboursList := findNeighboursForPeer(edgePeer)
+	graphMap.peerMap[edgePeer] = neighboursList
+	replyPtr = &neighboursList
+
+	for peer := range neighboursList {
+		peerNeighbours := graphMap.peerMap[]
+
+	}
+
 	return nil
+}
+
+func findNeighboursForPeer(edgePeer EdgePeer) []EdgePeer {
+	// peerNum := len(graphMap.peerMap)
+	neighboursList := []EdgePeer{}
+	for peer, _ := range graphMap.peerMap {
+		randomNumber := rand.Float64()
+		if randomNumber > RAND_THR {
+			neighboursList = append(neighboursList, peer)
+		}
+	}
+	return neighboursList
 }
 
 func (r *RegistryService) PeerExit(edgePeer EdgePeer, replyPtr *int) error {
