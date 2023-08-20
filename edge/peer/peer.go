@@ -35,7 +35,7 @@ func ActAsPeer() {
 
 	//Notificare ai vicini il nuovo arrivato
 	maxValue := len(Adjacent)
-	for i = 0; i < maxValue; i++ {
+	for i := 0; i < maxValue; i++ {
 		connect(Adjacent[i], ADJ_PORT)
 	}
 

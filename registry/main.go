@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-var RAND_THR Float64 = 0.6
+var RAND_THR float64 = 0.6
 
 type RegistryService int
 
@@ -50,19 +50,38 @@ func main() {
 	}
 }
 
+func findConnectedComponents() {
+	graphMap.mutex.Lock()
+	defer graphMap.mutex.Unlock()
+
+	visitedMap := make(map[EdgePeer](bool))
+	for edge := range graphMap.peerMap {
+		visitedMap[edge] = false
+	}
+
+	for peer := range graphMap.peerMap {
+		foundedPeers := make([]EdgePeer, 10)
+		recursiveConnectedComponentsResearch(peer, visitedMap, foundedPeers)
+	}
+}
+
+func recursiveConnectedComponentsResearch(peer EdgePeer, visitedMap map[EdgePeer](bool), foundedPeers []EdgePeer) {
+
+}
+
 func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *[]EdgePeer) error {
 	graphMap.mutex.Lock()
 	defer graphMap.mutex.Unlock()
 
 	neighboursList := findNeighboursForPeer(edgePeer)
 	graphMap.peerMap[edgePeer] = neighboursList
-	replyPtr = &neighboursList
 
-	for peer := range neighboursList {
-		peerNeighbours := graphMap.peerMap[]
-
+	for index := range neighboursList {
+		neighbour := neighboursList[index]
+		graphMap.peerMap[neighbour] = append(graphMap.peerMap[neighbour], edgePeer)
 	}
 
+	replyPtr = &neighboursList
 	return nil
 }
 
