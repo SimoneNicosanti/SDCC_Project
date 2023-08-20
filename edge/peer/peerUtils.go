@@ -1,3 +1,41 @@
 package peer
 
-var Adjacent = []EdgePeer{}
+import (
+	"errors"
+	"net/rpc"
+	"sync"
+)
+
+type PeerConnection struct {
+	peer   EdgePeer
+	client *rpc.Client
+}
+
+type AdjacentPeers struct {
+	mutex     sync.RWMutex
+	peerConns []PeerConnection
+}
+
+var Adjacent = AdjacentPeers{sync.RWMutex{}, []PeerConnection{}}
+var RegistryConn PeerConnection
+
+//Aggiunge una connessione verso un nuovo vicino
+func AddConnection(peerConn PeerConnection) {
+	Adjacent.mutex.Lock()
+	defer Adjacent.mutex.Unlock()
+
+	Adjacent.peerConns = append(Adjacent.peerConns, peerConn)
+}
+
+//Comunica ai tuoi vicini di aggiungerti come loro vicino
+func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
+	Adjacent.mutex.Lock()
+	defer Adjacent.mutex.Unlock()
+
+	err := client.Call("PeerService.AddNeighbour", neighbourPeer.PeerAddr, nil)
+
+	if err != nil {
+		return errors.New("Impossibile stabilire connessione con il nuovo vicino")
+	}
+	return nil
+}

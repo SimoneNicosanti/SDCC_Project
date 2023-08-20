@@ -1,8 +1,4 @@
-import pika
-import grpc
-# from proto.Login_pb2_grpc import LoginServiceStub
-# from proto.Login_pb2 import UserInfo, Response
-from controller import Controller
+from view import LoginInterface
 
 
 # def proto_attempt() :
@@ -13,11 +9,5 @@ from controller import Controller
 #     response : Response = client_stub.login(userInfo)
 #     print(response.response)
 
-def main() :
-    Controller.getFile("La Ginestra")
-
-
-
-
-if __name__ == "__main__" :
-    main()
+if __name__ == "__main__":
+    LoginInterface.startup_login_interface()
