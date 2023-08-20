@@ -15,5 +15,3 @@ RUN rm /ProtocolBuffer.zip
 #======#
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-## protoc -I=/proto --go_out=/src/proto --go-grpc_out=/src/proto /proto/Login.proto

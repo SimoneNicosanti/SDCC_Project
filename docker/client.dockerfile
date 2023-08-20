@@ -18,6 +18,9 @@ RUN rm /ProtocolBuffer.zip
 #======#
 RUN pip3 install grpcio
 RUN pip3 install grpcio-tools
-
-# To compile protocol buffer
-# python -m grpc_tools.protoc -I../proto --python_out=./proto --pyi_out=./proto --grpc_python_out=./proto ../proto/Login.proto
+# To solve module import error
+ENV PYTHONPATH="$PYTHONPATH:/src/proto"
+#======#
+# VIEW #
+#======#
+RUN pip3 install customtkinter

@@ -134,6 +134,7 @@ type Response struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// TODO: Change name
 	Response Response_ResponseType `protobuf:"varint,1,opt,name=response,proto3,enum=login.Response_ResponseType" json:"response,omitempty"`
 }
 

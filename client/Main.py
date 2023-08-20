@@ -1,13 +1,23 @@
 import pika
+import grpc
+# from proto.Login_pb2_grpc import LoginServiceStub
+# from proto.Login_pb2 import UserInfo, Response
+from controller import Controller
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters(host='rabbit_mq', port = '5672'))
 
-channel = connection.channel()
+# def proto_attempt() :
+#     channel = grpc.insecure_channel("login:50051")
+#     client_stub = LoginServiceStub(channel)
+    
+#     userInfo : UserInfo = UserInfo(username = "bella", passwd = "a", email = "tutti")
+#     response : Response = client_stub.login(userInfo)
+#     print(response.response)
 
-channel.queue_declare(queue='hello')
+def main() :
+    Controller.getFile("La Ginestra")
 
-for i in range(0, 10) :
-    channel.basic_publish(exchange='', routing_key='hello', body = str(i) + ' Hello World!')
-    print(" [x] Sent 'Hello World!'")
-connection.close()
+
+
+
+if __name__ == "__main__" :
+    main()

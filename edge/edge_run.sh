@@ -1,2 +1,2 @@
 go get
-go run main.py
+go run main.go
