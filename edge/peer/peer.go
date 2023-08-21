@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"edge/utils"
 	"errors"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"net/rpc"
 	"strings"
 	"time"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 /*
@@ -55,6 +58,61 @@ func ActAsPeer() {
 	defer registryClientPtr.Close()
 
 	var forever chan struct{}
+	<-forever
+}
+
+//host='rabbit_mq', port = '5672'
+func consumeMessages() {
+	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
+	utils.ExitOnError("Failed to connect to RabbitMQ", err)
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	utils.ExitOnError("Failed to open a channel", err)
+	defer ch.Close()
+
+	q, err := ch.QueueDeclare(
+		"storage_queue", // name
+		true,            // durable
+		false,           // delete when unused
+		false,           // exclusive
+		false,           // no-wait
+		nil,             // arguments
+	)
+	utils.ExitOnError("Failed to declare a queue", err)
+
+	err = ch.Qos(
+		1,     // prefetch count
+		0,     // prefetch size
+		false, // global
+	)
+	utils.ExitOnError("Failed to set QoS", err)
+
+	msgs, err := ch.Consume(
+		q.Name, // queue
+		"",     // consumer
+		false,  // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	utils.ExitOnError("Failed to register as a consumer", err)
+
+	var forever chan struct{}
+
+	go func() {
+		for d := range msgs {
+			log.Printf("Received a message: %s", d.Body)
+			dotCount := bytes.Count(d.Body, []byte("."))
+			t := time.Duration(dotCount)
+			time.Sleep(t * time.Second)
+			log.Printf("Done")
+			d.Ack(false)
+		}
+	}()
+
+	log.Printf("[*] Waiting for messages. To exit press CTRL+C")
 	<-forever
 }
 
