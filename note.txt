@@ -1,0 +1,20 @@
+1. Peer si iscrive al Registry
+2. Registry aggiunge i Peer tra i nodi
+3. Registry aggiunge il nodo al grafo dei nodi e sceglie a caso dei vicini da dire al Peer (assicurando che ne venga preso almeno 1)
+4. Registry risponde al Peer indicando a quali vicini connettersi
+5. Peer si connette ai vicini che il Registry gli ha detto
+    5_1. Se un vicino non risponde il Peer lo trascura e basta
+
+1. Periodicamente il Registry controlla il Grafo della rete
+2. Se il grafo è connesso bene
+3. Se il grafo non è connesso
+    3_1. Data la lista delle componenti connesse, prendi due componenti consecutive
+    3_2. Per ogni nodo della prima componente connettilo in maniera casuale con i nodi dell'altra, garantendo che almeno un arco sia creato
+    3_3. La creazione della connessione è fatta chiamando un metodo del Peer
+    3_4. Aggiorna il grafo delle connessioni
+
+1. Periodicamente il Registry controlla se ci sono dei peer che non rispondono ad un segnale di Ping
+2. Se non risponde allora lo rimuove dal grafo dei peer e chiude la connessione che aveva aperto verso di lui
+
+TODO Politica di Peer / Heartbeat: se usiamo Heartbeat possiamo implementare una politica di ripresa del server dal Peer
+TODO Cosa succede se una richiesta non viene soddisfatta (non arriva la risposta)

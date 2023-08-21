@@ -23,7 +23,8 @@ services:
       - sdcc_network
     volumes:
       - ./registry:/src
-
+    working_dir : /src
+    
   login:
     build: 
       dockerfile: ./docker/login.dockerfile

@@ -1,14 +1,12 @@
 package main
 
 import (
-	//"edge/peer"
-	"edge/server"
+	"edge/peer"
+	// "edge/server"
 )
 
 func main() {
-	//peer.ActAsPeer()
-	server.ActAsServer()
+	peer.ActAsPeer()
+	// server.ActAsServer()
 
-	// var forever chan struct{}
-	// <-forever
 }

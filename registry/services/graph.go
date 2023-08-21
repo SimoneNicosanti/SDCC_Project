@@ -1,6 +1,5 @@
-package main
+package services
 
-// Looks for connected components inside network graph
 func FindConnectedComponents(peerMap map[EdgePeer]([]EdgePeer)) [][]EdgePeer {
 	visitedMap := make(map[EdgePeer](bool))
 	for edge := range peerMap {

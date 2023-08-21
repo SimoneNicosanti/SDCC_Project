@@ -19,7 +19,7 @@ type AdjacentPeers struct {
 var Adjacent = AdjacentPeers{sync.RWMutex{}, []PeerConnection{}}
 var RegistryConn PeerConnection
 
-//Aggiunge una connessione verso un nuovo vicino
+// Aggiunge una connessione verso un nuovo vicino
 func AddConnection(peerConn PeerConnection) {
 	Adjacent.mutex.Lock()
 	defer Adjacent.mutex.Unlock()
@@ -27,15 +27,15 @@ func AddConnection(peerConn PeerConnection) {
 	Adjacent.peerConns = append(Adjacent.peerConns, peerConn)
 }
 
-//Comunica ai tuoi vicini di aggiungerti come loro vicino
+// Comunica ai tuoi vicini di aggiungerti come loro vicino
 func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 	Adjacent.mutex.Lock()
 	defer Adjacent.mutex.Unlock()
 
-	err := client.Call("PeerService.AddNeighbour", neighbourPeer.PeerAddr, nil)
+	err := client.Call("EdgePeer.AddNeighbour", neighbourPeer.PeerAddr, nil)
 
 	if err != nil {
-		return errors.New("Impossibile stabilire connessione con il nuovo vicino")
+		return errors.New("impossibile stabilire connessione con il nuovo vicino")
 	}
 	return nil
 }

@@ -1,32 +1,12 @@
-package main
+package utils
 
 import (
 	"bufio"
 	"errors"
 	"log"
-	"math/rand"
-	"net/rpc"
 	"os"
-	"strconv"
 	"strings"
-	"sync"
 )
-
-type RegistryService int
-
-type EdgePeer struct {
-	PeerAddr string
-}
-
-type ConnectionMap struct {
-	mutex       sync.RWMutex
-	connections map[EdgePeer](*rpc.Client)
-}
-
-type GraphMap struct {
-	mutex   sync.RWMutex
-	peerMap map[EdgePeer]([]EdgePeer)
-}
 
 func ExitOnError(errorMessage string, err error) {
 	if err != nil {
@@ -77,20 +57,4 @@ func GetEnvironmentVariable(variableName string) string {
 		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
 	}
 	return varibleString
-}
-
-func existsEdge() bool {
-	randomNumber := rand.Float64()
-
-	RAND_THR, err := strconv.ParseFloat(GetEnvironmentVariable("RAND_THR"), 64)
-	ExitOnError("Impossibile fare il parsing di RAND_THR", err)
-	return randomNumber > RAND_THR
-}
-
-func connectToPeer(edgePeer EdgePeer) (*rpc.Client, error) {
-	client, err := rpc.DialHTTP("tcp", "registry:1234")
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
 }

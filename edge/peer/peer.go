@@ -2,21 +2,24 @@ package peer
 
 import (
 	"edge/utils"
-	"fmt"
+	"errors"
 	"log"
 	"net"
+	"net/http"
 	"net/rpc"
 	"strings"
 	"time"
 )
 
 /*
-	TODO : Logica di connessione ad altri Peer
 	TODO : Azione nell'heartbeat (Peer -> Registry)
-	TODO :
+	TODO : Ricezione dei ping -> se ricevo un ping/richiesta di qualcuno che non conosco, allora lo inserisco come vicino
+	Logica di rilevamento errori: heartbeat verso il registry e ping verso i vicini.
+	In caso di caduta del registry, questo può richiedere ai peer di comunicargli i loro vicini in modo tale che il registry
+	può ricreare la rete.
+	TODO : Thread che risponde alle richieste nella coda Rabbit_mq
+	TODO : Meccanismo di caching
 */
-
-type PeerService int
 
 type EdgePeer struct {
 	PeerAddr string
@@ -28,36 +31,51 @@ func ActAsPeer() {
 	addresses, _ := net.InterfaceAddrs()
 	ipAddr := strings.Split(addresses[1].String(), "/")[0]
 
+	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
-	edgeListenerPtr, errorMessage, err := registerServiceForEdge(ipAddr, edgePeerPtr)
+	errorMessage, err := registerServiceForEdge(ipAddr, edgePeerPtr)
 	utils.ExitOnError(errorMessage, err)
+	log.Println("Servizio registrato")
 
-	var adj []EdgePeer
-	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, &adj)
-	utils.ExitOnError("Impossibile registrare il servizio sul registry server", err)
+	//Connessione al server Registry per l'inserimento nella rete
+	adj := new([]EdgePeer)
+	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, adj)
+	utils.ExitOnError("Impossibile registrare il servizio sul registry server: "+errorMessage, err)
+	log.Println("Servizio registrato su server Registry")
 
-	startHeartBeatThread()
+	log.Println(*adj) //Vicini restituiti dal server Registry
+
+	startHeartBeatThread() //Inizio meccanismo di heartbeat verso il server Registry
+	log.Println("Heartbeat iniziato")
 
 	//Connessione a tutti i vicini
-	connectAndNotifyYourAdjacent(adj)
+	connectAndNotifyYourAdjacent(*adj)
+	log.Println("Connessione con tutti i vicini completata")
 
-	//TODO creare un thread che risponde alle richieste degli altri peer
-	//TODO thread che risponde alle richieste nella coda Rabbit_mq
-
-	log.Println(edgeListenerPtr)
 	defer registryClientPtr.Close()
+
+	var forever chan struct{}
+	<-forever
 }
 
 func connectAndNotifyYourAdjacent(adj []EdgePeer) {
 	for i := 0; i < len(adj); i++ {
-		client, errorMessage, err := connectToPeer(adj[i].PeerAddr)
-		utils.ExitOnError(errorMessage, err)
-		peerConn := PeerConnection{adj[i], client}
+		client, err := connectAndAddNeighbour(adj[i])
+		//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
+		// il peer corrente lo ignorerà.
+		if err != nil {
+			continue
+		}
 
-		AddConnection(peerConn)
+		log.Println("Connessione con " + adj[i].PeerAddr + " effettuata")
 
 		err = CallAdjAddNeighbour(client, selfPeer)
-		utils.ExitOnError(errorMessage, err)
+		//Se il vicino a cui ci si è connessi non ricambia la connessione, chiudo la connessione stabilita precedentemente.
+		if err != nil {
+			client.Close()
+			log.Println(err.Error())
+			continue
+		}
 	}
 }
 
@@ -80,16 +98,16 @@ func registerToRegistry(edgePeerPtr *EdgePeer, adj *[]EdgePeer) (*rpc.Client, st
 
 	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, adj)
 	if err != nil {
-		return nil, "Errore registrazione sul Registry Server", err
+		return nil, "Errore durante la registrazione al Registry Server", err
 	}
 
 	return client, "", nil
 }
 
-func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (*net.Listener, string, error) {
+func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, error) {
 	err := rpc.Register(edgePeerPtr)
 	if err != nil {
-		return nil, "Errore registrazione del servizio", err
+		return "Errore registrazione del servizio", err
 	}
 
 	rpc.HandleHTTP()
@@ -97,41 +115,68 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (*net.Liste
 
 	peerListener, err := net.Listen("tcp", bindIpAddr)
 	if err != nil {
-		return nil, "Errore listen", err
+		return "Errore listen", err
 	}
 	edgePeerPtr.PeerAddr = peerListener.Addr().String()
 
+	//Thread che ascolta eventuali richieste arrivate
+	go listenLoop(peerListener)
+
 	selfPeer = EdgePeer{edgePeerPtr.PeerAddr}
 
-	return &peerListener, "", err
+	return "", err
+}
+
+func listenLoop(listener net.Listener) {
+	for {
+		http.Serve(listener, nil)
+	}
 }
 
 func startHeartBeatThread() {
 	hb := utils.GetConfigField("HEARTBEAT_FREQUENCY")
 	heartbeatDuration, err := time.ParseDuration(hb + "s")
 	if err != nil {
-		fmt.Println("Error parsing heartbeat duration:", err)
+		log.Println("Error parsing heartbeat duration:", err)
 		return
 	}
 	// Start the heartbeat thread
-	go heartbeat(heartbeatDuration)
+	go heartbeatToRegistry(heartbeatDuration)
 }
 
-func heartbeat(interval time.Duration) {
+func heartbeatToRegistry(interval time.Duration) {
 	for {
 		// TODO Perform heartbeat action here
-		fmt.Println("Heartbeat action executed.")
+		log.Println("Heartbeat action executed.")
 		// Wait for the specified interval before the next heartbeat
 		time.Sleep(interval)
 	}
 }
 
-func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
+func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	client, errorMessage, err := connectToPeer(peer.PeerAddr)
-	utils.ExitOnError(errorMessage, err)
+	//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
+	// il peer corrente lo ignorerà.
+	if err != nil {
+		log.Println(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
+		return nil, errors.New(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
+	}
+
+	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni
 	peerConn := PeerConnection{peer, client}
 
 	AddConnection(peerConn)
 
+	return client, nil
+}
+
+func (p *EdgePeer) Ping(none1 *int, none2 *int) error {
+	log.Println("Ping ricevuto")
 	return nil
+}
+
+func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
+	_, err := connectAndAddNeighbour(peer)
+
+	return err
 }
