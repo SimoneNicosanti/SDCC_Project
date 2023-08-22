@@ -1,4 +1,5 @@
-from view import LoginInterface
+# from view import LoginInterface
+from controller import Controller
 
 
 # def proto_attempt() :
@@ -10,4 +11,5 @@ from view import LoginInterface
 #     print(response.response)
 
 if __name__ == "__main__":
-    LoginInterface.startup_login_interface()
+    # LoginInterface.startup_login_interface()
+    Controller.getFile("file_prova.txt")

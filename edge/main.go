@@ -1,12 +1,11 @@
 package main
 
-import (
-	"edge/peer"
-	// "edge/server"
-)
+import "edge/server"
+
+// "edge/server"
 
 func main() {
-	peer.ActAsPeer()
-	// server.ActAsServer()
+	// peer.ActAsPeer()
+	server.ActAsServer()
 
 }
