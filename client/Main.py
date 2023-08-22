@@ -1,4 +1,4 @@
-# from view import LoginInterface
+from view import LoginInterface
 from controller import Controller
 
 
