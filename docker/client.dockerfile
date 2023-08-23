@@ -1,6 +1,6 @@
 FROM python
 
-RUN apt-get update
+RUN apt-get update -y
 
 #===========#
 # RABBIT_MQ #
@@ -24,3 +24,5 @@ ENV PYTHONPATH="$PYTHONPATH:/src/proto:/src/proto/file_transer"
 # VIEW #
 #======#
 RUN pip3 install customtkinter
+
+RUN pip3 install jproperties

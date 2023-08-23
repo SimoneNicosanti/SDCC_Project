@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"errors"
 	"log"
 	"os"
 	"strings"
@@ -14,21 +15,12 @@ func ExitOnError(errorMessage string, err error) {
 	}
 }
 
-func GetConfigField(fieldName string) string {
-	config, err := ReadConfigFile("conf.properties")
-	ExitOnError("Impossibile leggere il file di configurazione", err)
-	if value, exists := config[fieldName]; exists {
-		return value
-	}
-	return ""
-}
-
-func ReadConfigFile(filename string) (map[string]string, error) {
+func GetConfigFieldFromFile(fileName string, fieldName string) (string, error) {
 	config := make(map[string]string)
 
-	file, err := os.Open(filename)
+	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return "Impossibile aprire file di configurazione", err
 	}
 	defer file.Close()
 
@@ -42,10 +34,13 @@ func ReadConfigFile(filename string) (map[string]string, error) {
 			config[key] = value
 		}
 	}
-
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return "Impossibile leggere il file di configurazione", err
+	}
+	if value, exists := config[fieldName]; exists {
+		return value, nil
 	}
 
-	return config, nil
+	err = errors.New("PROPERTY NOT FOUND ERROR")
+	return "", err
 }

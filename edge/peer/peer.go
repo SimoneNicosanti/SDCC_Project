@@ -196,7 +196,11 @@ func listenLoop(listener net.Listener) {
 }
 
 func startHeartBeatThread() {
-	hb := utils.GetConfigField("HEARTBEAT_FREQUENCY")
+	hb, err := utils.GetConfigFieldFromFile("conf.properties", "HEARTBEAT_FREQUENCY")
+	if err != nil {
+		log.Println("Error retreving HEARTBEAT_FREQUENCY from properties", err)
+		return
+	}
 	heartbeatDuration, err := time.ParseDuration(hb + "s")
 	if err != nil {
 		log.Println("Error parsing heartbeat duration:", err)

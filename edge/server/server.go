@@ -9,10 +9,9 @@ import (
 	"log"
 	"os"
 
-	"server/proto"
-
 	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type MethodType string
@@ -24,9 +23,10 @@ const (
 )
 
 type Message struct {
-	Method   MethodType
-	FileName string
-	IpAddr   string
+	RequestId int32
+	Method    MethodType
+	FileName  string
+	IpAddr    string
 }
 
 func ActAsServer() {
@@ -67,14 +67,19 @@ func ActAsServer() {
 		for d := range msgs {
 			var message Message
 			json.Unmarshal(d.Body, &message)
-			conn, err := grpc.Dial(message.IpAddr)
+
+			creds := credentials.NewTLS(c)
+			conn, err := grpc.Dial(message.IpAddr, grpc.WithTransportCredentials(creds))
 			if err != nil {
+				log.Println(err.Error())
 				return "Errore Dial grpc", err
 			}
+			log.Println(message)
 
 			switch message.Method {
 
 			case "GET":
+				log.Println("CIAO")
 				client := proto.NewFileServiceClient(conn)
 				clientStream, err := client.Download(context.Background())
 				if err != nil {
@@ -99,18 +104,24 @@ func ActAsServer() {
 					if err != nil {
 						return "Errore durante la lettura del chunk dal file locale", err
 					}
-					clientStream.Send(&proto.FileChunk{Chunk: buffer[:n]})
+					clientStream.Send(&proto.FileChunk{RequestId: message.RequestId, Chunk: buffer[:n]})
 				}
 
-				_, err = clientStream.CloseAndRecv()
+				response, err := clientStream.CloseAndRecv()
 				if err != nil {
 					return "Errore durante la conferma di upload del file", err
 				}
-				log.Printf("File %s caricato con successo", message.FileName)
+				if response.RequestId != message.RequestId {
+					log.Printf("RequestID '%d' non riconosciuto! Expected --> '%d' ", response.RequestId, message.RequestId)
+				} else if !response.Success {
+					log.Printf("ERRORE nello scaricamento del File %s [REQ_ID: %d]", message.FileName, message.RequestId)
+				} else {
+					log.Printf("File %s caricato con successo [REQ_ID: %d]", message.FileName, message.RequestId)
+				}
 
 			case "PUT":
 				client := proto.NewFileServiceClient(conn)
-				clientStream, err := client.Upload(context.Background(), &proto.FileUploadRequest{FileName: message.FileName})
+				clientStream, err := client.Upload(context.Background(), &proto.FileUploadRequest{RequestId: message.RequestId, FileName: message.FileName})
 				if err != nil {
 					return "Errore durante tentativo di elaborazione PUT request", err
 				}
