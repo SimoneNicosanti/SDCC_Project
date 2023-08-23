@@ -3,7 +3,6 @@ package login;
 
 option go_package = "../proto";
 
-
 service LoginService {
     rpc login(UserInfo) returns (Response);
 
@@ -25,4 +24,3 @@ message Response {
     // TODO: Change name
     ResponseType response = 1 ;
 }
-

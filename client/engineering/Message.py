@@ -10,11 +10,12 @@ class Method(Enum) :
 
 class Message :
 
-    def __init__(self, method : Method, fileName : str) -> None:
+    def __init__(self, method : Method, fileName : str, ip_addr : str) -> None:
         self.method : Method = method
         self.fileName : str = fileName
+        self.ip_addr : str = ip_addr
 
 
 class MessageEncoder(json.JSONEncoder):
     def default(self, obj : Message):
-        return {"Method" : obj.method.name , "FileName" : obj.fileName}
+        return {"Method" : obj.method.name , "FileName" : obj.fileName, "IpAddr" : obj.ip_addr}

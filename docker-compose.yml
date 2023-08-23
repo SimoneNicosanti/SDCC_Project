@@ -12,6 +12,7 @@ services:
     volumes:
       - ./client:/src
       - ./proto:/proto
+      - ./docker/client_files:/files
     networks:
       - sdcc_network
     working_dir : /src
@@ -33,11 +34,12 @@ services:
       - sdcc_network
     volumes:
       - ./login:/src
-      - ./proto:/proto
+      - ./proto/login:/proto
     working_dir : /src
 
   edge:
-    image: golang:alpine
+    build:
+      dockerfile: ./docker/edge.dockerfile
     tty: true
     networks:
       - sdcc_network
@@ -47,6 +49,7 @@ services:
         tmpfs:
           size: 100M   ## Va per pagine di memoria principale (4k)
       - ./edge:/src
+      - ./proto/file_transfer:/proto
     working_dir : /src
     deploy:
       resources:

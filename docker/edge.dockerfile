@@ -1,26 +1,17 @@
-FROM python
+FROM golang:alpine
 
-RUN apt-get update
+RUN apk update
 
-#===========#
-# RABBIT_MQ #
-#===========#
-RUN pip3 install pika
 #========#
 # PROTOC #
 #========#
 RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v24.0/protoc-24.0-linux-x86_64.zip -O /ProtocolBuffer.zip
+RUN apk add unzip
 RUN unzip /ProtocolBuffer.zip -d /ProtocolBuffer
 ENV PATH="$PATH:/ProtocolBuffer/bin"
 RUN rm /ProtocolBuffer.zip
 #======#
 # GRPC #
 #======#
-RUN pip3 install grpcio
-RUN pip3 install grpcio-tools
-# To solve module import error
-ENV PYTHONPATH="$PYTHONPATH:/src/proto:/src/proto/file_transer"
-#======#
-# VIEW #
-#======#
-RUN pip3 install customtkinter
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest

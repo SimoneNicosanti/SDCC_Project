@@ -48,6 +48,8 @@ PUT (?):
 11. if fileSize > 4MB (maxMessageSize) --> need multiple messages (chunked files)
 12. if fileSize < 70MB but fileSize > current free edge memory --> ask to neighbours if they can store it
 
+SOLUZIONE GET/PUT --> IL CLIENT ESPONE UN SERVIZIO PER RICEVERE/INVIARE IL FILE DAL PRIMO EDGE DISPONIBILE A FORNIRGLIELO
+nei metadati: indirizzi dove contattare il CLIENT. l'edge fa l'ack sulla coda solo dopo aver contattato il client e aver eseguito lo scambio.
 
 
 Buonasera professore, sono Manenti Edoardo uno studente del corso di SDCC del primo anno di magistrale. 

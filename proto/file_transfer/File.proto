@@ -1,0 +1,27 @@
+syntax = "proto3";
+package client;
+
+option go_package = "../proto";
+
+service FileService {
+    rpc Upload(FileUploadRequest) returns (stream FileChunk);
+    rpc Download(stream FileChunk) returns (Response);
+    // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
+}
+
+message FileUploadRequest {
+    string file_name = 1;
+}
+
+message FileChunk {
+    bytes chunk = 1;
+}
+
+message Response {
+    bool success = 1;
+}
+
+message FileDownloadResponse {
+    string file_name = 1;
+    uint32 file_size = 2;
+}

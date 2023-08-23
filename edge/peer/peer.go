@@ -12,6 +12,7 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	// boom "github.com/tylertreat/BoomFilters"
 )
 
 /*
@@ -31,6 +32,9 @@ type EdgePeer struct {
 var selfPeer EdgePeer
 
 func ActAsPeer() {
+	// bloomFilter := boom.NewDefaultStableBloomFilter(10000, 0.01)
+	// fmt.Println(bloomFilter)
+
 	addresses, _ := net.InterfaceAddrs()
 	ipAddr := strings.Split(addresses[1].String(), "/")[0]
 
@@ -103,11 +107,11 @@ func consumeMessages() {
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
+			log.Printf("[*] Received a message: %s", d.Body)
 			dotCount := bytes.Count(d.Body, []byte("."))
 			t := time.Duration(dotCount)
 			time.Sleep(t * time.Second)
-			log.Printf("Done")
+			log.Printf("[*] Done")
 			d.Ack(false)
 		}
 	}()
