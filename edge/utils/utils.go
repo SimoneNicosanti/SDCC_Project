@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -15,12 +16,21 @@ func ExitOnError(errorMessage string, err error) {
 	}
 }
 
-func GetConfigFieldFromFile(fileName string, fieldName string) (string, error) {
+func SetupEnvVariables(fileName string) {
+	configMap, err := ReadConfigFile(fileName)
+	ExitOnError("Impossibile leggere il file di configurazione", err)
+	for key, value := range configMap {
+		err := os.Setenv(key, value)
+		ExitOnError("Impossibile impostare le variabili d'ambiente", err)
+	}
+}
+
+func ReadConfigFile(filename string) (map[string]string, error) {
 	config := make(map[string]string)
 
-	file, err := os.Open(fileName)
+	file, err := os.Open(filename)
 	if err != nil {
-		return "Impossibile aprire file di configurazione", err
+		return nil, err
 	}
 	defer file.Close()
 
@@ -34,13 +44,25 @@ func GetConfigFieldFromFile(fileName string, fieldName string) (string, error) {
 			config[key] = value
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
-		return "Impossibile leggere il file di configurazione", err
-	}
-	if value, exists := config[fieldName]; exists {
-		return value, nil
+		return nil, err
 	}
 
-	err = errors.New("PROPERTY NOT FOUND ERROR")
-	return "", err
+	return config, nil
+}
+
+func GetEnvironmentVariable(variableName string) string {
+	variableString, isPresent := os.LookupEnv(variableName)
+	if !isPresent {
+		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
+	}
+	return variableString
+}
+
+func GetIntegerEnvironmentVariable(variableName string) int64 {
+	variableString := GetEnvironmentVariable(variableName)
+	variableInt, err := strconv.ParseInt(variableString, 10, 64)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return variableInt
 }

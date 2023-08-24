@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ func ExitOnError(errorMessage string, err error) {
 	}
 }
 
-func SetupEnvVariables(fieldName string) {
+func SetupEnvVariables(fileName string) {
 	configMap, err := ReadConfigFile("conf.properties")
 	ExitOnError("Impossibile leggere il file di configurazione", err)
 	for key, value := range configMap {
@@ -52,17 +53,16 @@ func ReadConfigFile(filename string) (map[string]string, error) {
 }
 
 func GetEnvironmentVariable(variableName string) string {
-	varibleString, isPresent := os.LookupEnv(variableName)
+	variableString, isPresent := os.LookupEnv(variableName)
 	if !isPresent {
 		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
 	}
-	return varibleString
+	return variableString
 }
 
-func GetIntegerEnvironmentVariable(variableName string) int {
-	varibleString, isPresent := os.LookupEnv(variableName)
-	if !isPresent {
-		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
-	}
-	return varibleString
+func GetIntegerEnvironmentVariable(variableName string) int64 {
+	variableString := GetEnvironmentVariable(variableName)
+	variableInt, err := strconv.ParseInt(variableString, 10, 64)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return variableInt
 }

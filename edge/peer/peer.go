@@ -30,6 +30,7 @@ type EdgePeer struct {
 }
 
 var selfPeer EdgePeer
+var registryClient *rpc.Client
 
 func ActAsPeer() {
 	// bloomFilter := boom.NewDefaultStableBloomFilter(10000, 0.01)
@@ -47,12 +48,13 @@ func ActAsPeer() {
 	//Connessione al server Registry per l'inserimento nella rete
 	adj := new([]EdgePeer)
 	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, adj)
+	registryClient = registryClientPtr
 	utils.ExitOnError("Impossibile registrare il servizio sul registry server: "+errorMessage, err)
 	log.Println("Servizio registrato su server Registry")
 
 	log.Println(*adj) //Vicini restituiti dal server Registry
 
-	startHeartBeatThread() //Inizio meccanismo di heartbeat verso il server Registry
+	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
 	log.Println("Heartbeat iniziato")
 
 	//Connessione a tutti i vicini
@@ -65,7 +67,7 @@ func ActAsPeer() {
 	<-forever
 }
 
-//host='rabbit_mq', port = '5672'
+// host='rabbit_mq', port = '5672'
 func consumeMessages() {
 	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
 	utils.ExitOnError("Failed to connect to RabbitMQ", err)
@@ -195,27 +197,30 @@ func listenLoop(listener net.Listener) {
 	}
 }
 
-func startHeartBeatThread() {
-	hb, err := utils.GetConfigFieldFromFile("conf.properties", "HEARTBEAT_FREQUENCY")
-	if err != nil {
-		log.Println("Error retreving HEARTBEAT_FREQUENCY from properties", err)
-		return
-	}
-	heartbeatDuration, err := time.ParseDuration(hb + "s")
-	if err != nil {
-		log.Println("Error parsing heartbeat duration:", err)
-		return
-	}
-	// Start the heartbeat thread
-	go heartbeatToRegistry(heartbeatDuration)
-}
+func heartbeatToRegistry() {
 
-func heartbeatToRegistry(interval time.Duration) {
+	HEARTBEAT_FREQUENCY := utils.GetIntegerEnvironmentVariable("HEARTBEAT_FREQUENCY")
+	// if err != nil {
+	// 	log.Println("Error retreving HEARTBEAT_FREQUENCY from properties", err)
+	// 	return
+	// }
+
 	for {
 		// TODO Perform heartbeat action here
-		log.Println("Heartbeat action executed.")
 		// Wait for the specified interval before the next heartbeat
-		time.Sleep(interval)
+		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
+
+		heartbeatMessage := HeartbeatMessage{EdgePeer: selfPeer, NeighboursList: []EdgePeer{}}
+		returnPtr := new([]EdgePeer)
+		err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, returnPtr)
+		if err != nil {
+			log.Println("Failed to heartbeat to Registry")
+		}
+		// Aggiornare la lista dei peer in base a peer mancanti o meno:
+		// - Ci sono tutti --> Perfetto
+		// - Manca qualcuno -->
+		// - Qualcuno in più -->
+		log.Println("Heartbeat action executed.")
 	}
 }
 

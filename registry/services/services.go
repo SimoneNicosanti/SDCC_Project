@@ -16,7 +16,7 @@ var connectionMap ConnectionMap = ConnectionMap{sync.RWMutex{}, make(map[EdgePee
 
 var graphMap GraphMap = GraphMap{sync.RWMutex{}, make(map[EdgePeer]([]EdgePeer))}
 
-var heartbeatMap HeartbeatMap = HeartbeatMap{sync.RWMutex{}, time.Now(), make(map[EdgePeer]float64)])}
+var heartbeatMap HeartbeatMap = HeartbeatMap{sync.RWMutex{}, time.Now(), make(map[EdgePeer](time.Time))}
 
 func ActAsRegistry() {
 	registryService := new(RegistryService)
@@ -74,14 +74,7 @@ func (r *RegistryService) PeerExit(edgePeer EdgePeer, replyPtr *int) error {
 	return nil
 }
 
-func (r *RegistryService) PeerHeartbeat(edgePeer EdgePeer, replyPtr *int) error {
-	return nil
-}
-
-func (r *RegistryService) PeerPing(inputInt int, replyPtr *int) error {
-	return nil
-}
-
+// TODO: Quando
 func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *[]EdgePeer) error {
 	heartbeatMap.mutex.Lock()
 	graphMap.mutex.Lock()
@@ -91,26 +84,28 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 	defer heartbeatMap.mutex.Unlock()
 
 	edgePeer := heartbeatMessage.EdgePeer
-	_, ok := heartbeatMap[edgePeer]
-	if (ok) {
+	_, ok := heartbeatMap.heartbeats[edgePeer]
+	if ok {
 		// Il peer è presente nel sistema --> Ritorno la lista dei suoi peer come la conosce il registry
 		// Notare che le liste sono coerenti perché l'unico caso in cui un peer è rimosso è quando l'heartbeat non è ricevuto per un certo tempo
-		*retryPtr = graphMap.peerMap[edgePeer]
+		*replyPtr = graphMap.peerMap[edgePeer]
 	} else {
 		// TODO Il peer non è presente nel sistema --> Era stato tolto oppure ho un recupero dal fallimento
 		// Aggiungere l'elenco dei peer nel graphMap
 		// Ritorno lo stesso di ciò che mi è stato inviato
 		// Devo stabilire la connessione verso questo peer
 
-		graphMap[edgePeer] = heartbeatMessage.NeighboursList
+		graphMap.peerMap[edgePeer] = heartbeatMessage.NeighboursList
 		client, err := connectToPeer(edgePeer)
-		if (err != nil) {
+		if err != nil {
 			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr)
 		}
-		connectionMap[edgePeer] = client
+		connectionMap.connections[edgePeer] = client
 
-		*retryPtr = heartbeatMessage.NeighboursList
+		*replyPtr = heartbeatMessage.NeighboursList
 	}
-	now = Time.Now()
-	heartbeatMap[edgePeer] = now
+	now := time.Now()
+	heartbeatMap.heartbeats[edgePeer] = now
+
+	return nil
 }

@@ -8,30 +8,31 @@ import (
 )
 
 func checkForDeadPeers() {
-	monitorTimerString := utils.GetEnvironmentVariable("MONITOR_TIMER")
-	MONITOR_TIMER, err := strconv.ParseInt(monitorTimerString, 10, 64)
-	utils.ExitOnError("Impossibile fare il parsing di MONITOR_TIME", err)
+	MONITOR_TIMER := utils.GetIntegerEnvironmentVariable("MONITOR_TIMER")
+	HEARTBEAT_THR := utils.GetIntegerEnvironmentVariable("HEARTBEAT_THR")
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
 
+		heartbeatMap.mutex.Lock()
 		graphMap.mutex.Lock()
 		connectionMap.mutex.Lock()
-		for peer, peerConnection := range connectionMap.connections {
-			err := peerConnection.Call("EdgePeer.Ping", new(int), new(int))
-			if err != nil {
-				// log.Println(err.Error())
-				// log.Println(peer)
-				removeDeadNode(peer)
+		lastCheckTime := heartbeatMap.lastChecked
+		for edgePeer, lastHeartbeatTime := range heartbeatMap.heartbeats {
+			if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > float64(HEARTBEAT_THR) {
+				//Il peer viene considerato caduto e viene rimosso dalla rete
+				removeDeadNode(edgePeer)
 			}
 		}
-		log.Println(graphMap.peerMap)
 		connectionMap.mutex.Unlock()
 		graphMap.mutex.Unlock()
+		heartbeatMap.mutex.Unlock()
 	}
 
 }
 
 func removeDeadNode(deadPeer EdgePeer) {
+	// Rimuove un nodo morto dalla rete
+	// Assume che il lock sulle strutture dati sia stato preso dal chiamante
 	delete(graphMap.peerMap, deadPeer)
 	for otherPeer, otherPeerConnections := range graphMap.peerMap {
 		var deadPeerIndex int

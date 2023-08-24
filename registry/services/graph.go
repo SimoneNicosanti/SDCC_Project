@@ -24,7 +24,10 @@ func recursiveConnectedComponentsResearch(peerMap map[EdgePeer]([]EdgePeer), pee
 	peerNeighbours := peerMap[peer]
 	for index := range peerNeighbours {
 		neighbour := peerNeighbours[index]
-		if !visitedMap[neighbour] {
+		visited, isInMap := visitedMap[neighbour]
+		// Non è detto che il nodo sia chiave nel grafo
+		// Quando mi arriva heartbeat dopo ripresa del registry, il nodo mi dice i suoi vicini, ma io aggiungo solo il nodo da cui ho ricevuto heartbeat
+		if !visited && isInMap {
 			neighboursOfNeighbour := recursiveConnectedComponentsResearch(peerMap, neighbour, visitedMap)
 			for index := range neighboursOfNeighbour {
 				foundedPeers = append(foundedPeers, neighboursOfNeighbour[index])

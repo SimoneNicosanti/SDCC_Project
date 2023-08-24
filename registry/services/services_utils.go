@@ -6,6 +6,7 @@ import (
 	"registry/utils"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type RegistryService int
@@ -26,8 +27,8 @@ type ConnectionMap struct {
 
 type HeartbeatMap struct {
 	mutex       sync.RWMutex
-	lastChecked float64
-	heartbeats  map[EdgePeer](float64)
+	lastChecked time.Time
+	heartbeats  map[EdgePeer](time.Time)
 }
 
 type HeartbeatMessage struct {

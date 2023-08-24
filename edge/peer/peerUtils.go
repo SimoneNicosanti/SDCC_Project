@@ -16,6 +16,11 @@ type AdjacentPeers struct {
 	peerConns []PeerConnection
 }
 
+type HeartbeatMessage struct {
+	EdgePeer       EdgePeer
+	NeighboursList []EdgePeer
+}
+
 var Adjacent = AdjacentPeers{sync.RWMutex{}, []PeerConnection{}}
 var RegistryConn PeerConnection
 
