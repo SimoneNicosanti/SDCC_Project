@@ -4,7 +4,7 @@ from engineering.Message import Message, Method, MessageEncoder
 from proto.file_transfer.File_pb2 import *
 from proto.file_transfer.File_pb2_grpc import *
 from utils import Utils
-import json, pika, grpc, socket, secrets, sys, threading
+import json, pika, grpc, socket, secrets, sys, threading, ssl
 
 MAXINT32 = 2147483647
 random_request_id = secrets.randbelow(MAXINT32)
@@ -30,9 +30,19 @@ def sendRequestForFile(requestType, fileName):
     #TODO wait for response
 
 def serve():
+    #TODO TLS CONFIGURATION ============================================================
+    # Load your server's certificate and private key
+    #server_cert = open("/src/tls/server-cert.pem", "rb").read()
+    #server_key = open("/src/tls/server-key.pem", "rb").read()
+    # Create server credentials using the loaded certificate and key
+    #server_credentials = grpc.ssl_server_credentials(((server_key, server_cert),))
+    #=============================================================================
+
+    # Create a gRPC server with secure credentials
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
     add_FileServiceServicer_to_server(FileService(), server)
     server.add_insecure_port('[::]:50051')
+    #TODO server.add_secure_port('[::]:50051', server_credentials)
     server.start()
 
 def getFile(fileName : str) -> None :
@@ -65,7 +75,7 @@ class FileService(FileServiceServicer):
             chunkSize = int(Utils.readProperties("conf.properties", "CHUNK_SIZE"))
             chunk = file.read(chunkSize)
             while chunk:
-                fileChunk : FileChunk = FileChunk(file_name = request.file_name, file_chunk = chunk)
+                fileChunk : FileChunk = FileChunk(file_name = request.file_name, chunk = chunk)
                 yield fileChunk
                 chunk = file.read(chunkSize)
 
@@ -76,21 +86,21 @@ class FileService(FileServiceServicer):
         def secure_write(request_id, file, chunk):
             #Security check
             if request_id != random_request_id:
+                print("Request_id = '{random_request_id}'")
                 return False
-            file.write(chunk.file_chunk)
+            file.write(chunk)
         #-----------------------------------------
 
         chunk : FileChunk = next(request_iterator)
         filename = chunk.file_name
-        print("RECEIVED DOWNLOAD")
 
-        with open(filename, "w") as file:
-            if not secure_write(file, chunk.file_chunk):
-                    return Response(request_id = random_request_id, success = False)
+        with open("/files/" + filename, "wb") as file:
+            if not secure_write(random_request_id, file, chunk.chunk):
+                return Response(request_id = random_request_id, success = False)
             for chunk in request_iterator:
                 chunk : FileChunk
                 
-                if not secure_write(file, chunk.file_chunk):
+                if not secure_write(random_request_id, file, chunk.chunk):
                     return Response(request_id = random_request_id, success = False)
                           
         sem.release()

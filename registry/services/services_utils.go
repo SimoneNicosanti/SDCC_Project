@@ -24,6 +24,17 @@ type ConnectionMap struct {
 	connections map[EdgePeer](*rpc.Client)
 }
 
+type HeartbeatMap struct {
+	mutex       sync.RWMutex
+	lastChecked float64
+	heartbeats  map[EdgePeer](float64)
+}
+
+type HeartbeatMessage struct {
+	EdgePeer       EdgePeer
+	NeighboursList []EdgePeer
+}
+
 func connectToPeer(edgePeer EdgePeer) (*rpc.Client, error) {
 	client, err := rpc.DialHTTP("tcp", edgePeer.PeerAddr)
 	if err != nil {

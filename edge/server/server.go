@@ -9,9 +9,12 @@ import (
 	"log"
 	"os"
 
+	// Needed for handling X.509 certificates
+	// Needed for reading files
+
 	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type MethodType string
@@ -63,35 +66,49 @@ func ActAsServer() {
 
 	var forever chan struct{}
 
-	go func() (string, error) {
+	go func() {
 		for d := range msgs {
 			var message Message
 			json.Unmarshal(d.Body, &message)
-
-			creds := credentials.NewTLS(c)
-			conn, err := grpc.Dial(message.IpAddr, grpc.WithTransportCredentials(creds))
+			/*TLS CONFIGURATION ==============================================
+			// Load CA certificate and key
+			caCert, err := ioutil.ReadFile("/src/tls/ca-cert.pem")
 			if err != nil {
-				log.Println(err.Error())
-				return "Errore Dial grpc", err
+				log.Fatalf("Failed to load CA certificate: %v", err)
+			}
+			// Create a certificate pool and add the CA certificate to it
+			certPool := x509.NewCertPool()
+			if !certPool.AppendCertsFromPEM(caCert) {
+				log.Fatalf("failed to add server CA's certificate")
+			}
+			// Create a TLS configuration with the certificate pool
+			tlsConfig := &tls.Config{
+				RootCAs: certPool,
+			}
+			creds := credentials.NewTLS(tlsConfig)
+			conn, err := grpc.Dial(message.IpAddr, grpc.WithTransportCredentials(creds))
+			//================================================================*/
+			conn, err := grpc.Dial(message.IpAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Fatalf(err.Error())
 			}
 			log.Println(message)
 
 			switch message.Method {
 
 			case "GET":
-				log.Println("CIAO")
 				client := proto.NewFileServiceClient(conn)
 				clientStream, err := client.Download(context.Background())
 				if err != nil {
-					return "Errore durante tentativo di elaborazione GET request", err
+					log.Fatalf(err.Error())
 				}
 				// TODO Aggiungere ricerca all'interno della rete ed eventuale download del file da S3
 
 				//SE CE L'HO IO:
 				// Apri il file locale da cui verranno letti i chunks
-				localFile, err := os.Open(message.FileName)
+				localFile, err := os.Open("/files/" + message.FileName)
 				if err != nil {
-					return "Errore durante l'apertura del file locale", err
+					log.Fatalf(err.Error())
 				}
 				defer localFile.Close()
 				chunkSize := 1024 // dimensione del chunk
@@ -102,14 +119,14 @@ func ActAsServer() {
 						break
 					}
 					if err != nil {
-						return "Errore durante la lettura del chunk dal file locale", err
+						log.Fatalf(err.Error())
 					}
-					clientStream.Send(&proto.FileChunk{RequestId: message.RequestId, Chunk: buffer[:n]})
+					clientStream.Send(&proto.FileChunk{RequestId: message.RequestId, FileName: message.FileName, Chunk: buffer[:n]})
 				}
 
 				response, err := clientStream.CloseAndRecv()
 				if err != nil {
-					return "Errore durante la conferma di upload del file", err
+					log.Fatalf(err.Error())
 				}
 				if response.RequestId != message.RequestId {
 					log.Printf("RequestID '%d' non riconosciuto! Expected --> '%d' ", response.RequestId, message.RequestId)
@@ -118,19 +135,19 @@ func ActAsServer() {
 				} else {
 					log.Printf("File %s caricato con successo [REQ_ID: %d]", message.FileName, message.RequestId)
 				}
-
+				break
 			case "PUT":
 				client := proto.NewFileServiceClient(conn)
 				clientStream, err := client.Upload(context.Background(), &proto.FileUploadRequest{RequestId: message.RequestId, FileName: message.FileName})
 				if err != nil {
-					return "Errore durante tentativo di elaborazione PUT request", err
+					log.Fatalf(err.Error())
 				}
 				//il client invia il file --> l'Edge scarica i chunks (tramite questo stream)
 
 				// Apri il file locale dove verranno scritti i chunks
 				localFile, err := os.Create(message.FileName)
 				if err != nil {
-					return "Errore durante l'apertura del file locale", err
+					log.Fatalf(err.Error())
 				}
 				defer localFile.Close()
 
@@ -140,22 +157,19 @@ func ActAsServer() {
 						break
 					}
 					if err != nil {
-						return "Errore durante la ricezione del chunk", err
+						log.Fatalf(err.Error())
 					}
 					_, err = localFile.Write(fileChunk.Chunk)
 					if err != nil {
-						return "Errore durante la scrittura del chunk nel file locale", err
+						log.Fatalf(err.Error())
 					}
 				}
 
 				log.Printf("File %s scaricato con successo", message.FileName)
+				break
 			}
 			conn.Close()
-			// fmt.Println(d.Body)
-			log.Println(message.Method, message.FileName)
 		}
-
-		return "", nil
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")

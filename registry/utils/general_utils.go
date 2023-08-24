@@ -58,3 +58,11 @@ func GetEnvironmentVariable(variableName string) string {
 	}
 	return varibleString
 }
+
+func GetIntegerEnvironmentVariable(variableName string) int {
+	varibleString, isPresent := os.LookupEnv(variableName)
+	if !isPresent {
+		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
+	}
+	return varibleString
+}
