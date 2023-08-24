@@ -1,17 +1,12 @@
 package peer
 
 import (
-	"bytes"
 	"edge/utils"
-	"errors"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"strings"
-	"time"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 	// boom "github.com/tylertreat/BoomFilters"
 )
 
@@ -46,9 +41,10 @@ func ActAsPeer() {
 	log.Println("Servizio registrato")
 
 	//Connessione al server Registry per l'inserimento nella rete
-	adj := new([]EdgePeer)
+	adj := new(map[EdgePeer]byte)
 	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, adj)
 	registryClient = registryClientPtr
+
 	utils.ExitOnError("Impossibile registrare il servizio sul registry server: "+errorMessage, err)
 	log.Println("Servizio registrato su server Registry")
 
@@ -67,71 +63,16 @@ func ActAsPeer() {
 	<-forever
 }
 
-// host='rabbit_mq', port = '5672'
-func consumeMessages() {
-	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
-	utils.ExitOnError("Failed to connect to RabbitMQ", err)
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	utils.ExitOnError("Failed to open a channel", err)
-	defer ch.Close()
-
-	q, err := ch.QueueDeclare(
-		"storage_queue", // name
-		true,            // durable
-		false,           // delete when unused
-		false,           // exclusive
-		false,           // no-wait
-		nil,             // arguments
-	)
-	utils.ExitOnError("Failed to declare a queue", err)
-
-	err = ch.Qos(
-		1,     // prefetch count
-		0,     // prefetch size
-		false, // global
-	)
-	utils.ExitOnError("Failed to set QoS", err)
-
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		false,  // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	utils.ExitOnError("Failed to register as a consumer", err)
-
-	var forever chan struct{}
-
-	go func() {
-		for d := range msgs {
-			log.Printf("[*] Received a message: %s", d.Body)
-			dotCount := bytes.Count(d.Body, []byte("."))
-			t := time.Duration(dotCount)
-			time.Sleep(t * time.Second)
-			log.Printf("[*] Done")
-			d.Ack(false)
-		}
-	}()
-
-	log.Printf("[*] Waiting for messages. To exit press CTRL+C")
-	<-forever
-}
-
-func connectAndNotifyYourAdjacent(adj []EdgePeer) {
-	for i := 0; i < len(adj); i++ {
-		client, err := connectAndAddNeighbour(adj[i])
+func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
+	for adjPeer := range adjs {
+		client, err := connectAndAddNeighbour(adjPeer)
 		//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 		// il peer corrente lo ignorerà.
 		if err != nil {
 			continue
 		}
 
-		log.Println("Connessione con " + adj[i].PeerAddr + " effettuata")
+		log.Println("Connessione con " + adjPeer.PeerAddr + " effettuata")
 
 		err = CallAdjAddNeighbour(client, selfPeer)
 		//Se il vicino a cui ci si è connessi non ricambia la connessione, chiudo la connessione stabilita precedentemente.
@@ -143,22 +84,15 @@ func connectAndNotifyYourAdjacent(adj []EdgePeer) {
 	}
 }
 
-func connectToPeer(addr string) (*rpc.Client, string, error) {
-	client, err := rpc.DialHTTP("tcp", addr)
-	if err != nil {
-		return nil, "Errore Dial HTTP", err
-	}
-	return client, "", err
-}
-
-func registerToRegistry(edgePeerPtr *EdgePeer, adj *[]EdgePeer) (*rpc.Client, string, error) {
+func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, string, error) {
 	registryAddr := "registry:1234"
 	client, err := rpc.DialHTTP("tcp", registryAddr)
 	if err != nil {
 		return nil, "Errore Dial HTTP", err
 	}
 
-	RegistryConn = PeerConnection{EdgePeer{registryAddr}, client}
+	client, errorMessage, err := connectToNode("registry:1234")
+	utils.ExitOnError(errorMessage, err)
 
 	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, adj)
 	if err != nil {
@@ -195,48 +129,4 @@ func listenLoop(listener net.Listener) {
 	for {
 		http.Serve(listener, nil)
 	}
-}
-
-func heartbeatToRegistry() {
-
-	HEARTBEAT_FREQUENCY := utils.GetIntegerEnvironmentVariable("HEARTBEAT_FREQUENCY")
-	// if err != nil {
-	// 	log.Println("Error retreving HEARTBEAT_FREQUENCY from properties", err)
-	// 	return
-	// }
-
-	for {
-		// TODO Perform heartbeat action here
-		// Wait for the specified interval before the next heartbeat
-		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
-
-		heartbeatMessage := HeartbeatMessage{EdgePeer: selfPeer, NeighboursList: []EdgePeer{}}
-		returnPtr := new([]EdgePeer)
-		err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, returnPtr)
-		if err != nil {
-			log.Println("Failed to heartbeat to Registry")
-		}
-		// Aggiornare la lista dei peer in base a peer mancanti o meno:
-		// - Ci sono tutti --> Perfetto
-		// - Manca qualcuno -->
-		// - Qualcuno in più -->
-		log.Println("Heartbeat action executed.")
-	}
-}
-
-func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
-	client, errorMessage, err := connectToPeer(peer.PeerAddr)
-	//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
-	// il peer corrente lo ignorerà.
-	if err != nil {
-		log.Println(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
-		return nil, errors.New(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
-	}
-
-	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni
-	peerConn := PeerConnection{peer, client}
-
-	AddConnection(peerConn)
-
-	return client, nil
 }

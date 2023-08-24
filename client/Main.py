@@ -1,5 +1,7 @@
 #from view import LoginInterface
 from controller import Controller
+from view import OptionsInterface
+import configuration
 
 
 # def proto_attempt() :
@@ -13,6 +15,7 @@ from controller import Controller
 if __name__ == "__main__":
     # LoginInterface.startup_login_interface()
     Controller.login("sae", "admin", "admin@sae.com")
-    Controller.getFile("file_prova.txt")
+    #configuration.main()
+    #OptionsInterface.main()
 
     

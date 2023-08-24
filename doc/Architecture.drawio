@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e" pages="3">
     <diagram name="Get File" id="ERLvfSf9l31dRj-6idGc">
-        <mxGraphModel dx="1274" dy="625" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="1865" dy="508" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -123,7 +123,7 @@
                 </mxCell>
                 <mxCell id="19" value="If RabbitMQ doesn't work, contact S3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="18" vertex="1" connectable="0">
                     <mxGeometry x="0.382" y="-2" relative="1" as="geometry">
-                        <mxPoint x="-2" y="-29" as="offset"/>
+                        <mxPoint x="8" y="-29" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="kAbpo-Gp6FqQRw1j7rk1-9" value="Client" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=20;" parent="1" vertex="1">
@@ -193,7 +193,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="gJ0FruzGSYdkZxmFpLk-" name="Add File">
-        <mxGraphModel dx="1327" dy="707" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="1038" dy="407" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>

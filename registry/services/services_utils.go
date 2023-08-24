@@ -11,9 +11,10 @@ import (
 
 type RegistryService int
 
+// La seconda mappa è solo per usarla come un Set
 type GraphMap struct {
 	mutex   sync.RWMutex
-	peerMap map[EdgePeer]([]EdgePeer)
+	peerMap map[EdgePeer](map[EdgePeer](byte))
 }
 
 type EdgePeer struct {
@@ -33,10 +34,10 @@ type HeartbeatMap struct {
 
 type HeartbeatMessage struct {
 	EdgePeer       EdgePeer
-	NeighboursList []EdgePeer
+	NeighboursList map[EdgePeer]byte
 }
 
-func connectToPeer(edgePeer EdgePeer) (*rpc.Client, error) {
+func connectToNode(edgePeer EdgePeer) (*rpc.Client, error) {
 	client, err := rpc.DialHTTP("tcp", edgePeer.PeerAddr)
 	if err != nil {
 		return nil, err

@@ -8,8 +8,8 @@ import (
 // "edge/server"
 
 func main() {
-	// peer.ActAsPeer()
 	utils.SetupEnvVariables("conf.properties")
+	//peer.ActAsPeer()
 	server.ActAsServer()
 
 }

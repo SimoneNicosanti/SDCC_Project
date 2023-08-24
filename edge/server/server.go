@@ -34,11 +34,11 @@ type Message struct {
 
 func ActAsServer() {
 	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
-	utils.ExitOnError("Impossibile contattare il server RabbitMQ", err)
+	utils.ExitOnError("Impossibile contattare il server RabbitMQ\r\n", err)
 	defer conn.Close()
 
 	ch, err := conn.Channel()
-	utils.ExitOnError("Impossibile aprire il canale verso la coda", err)
+	utils.ExitOnError("Impossibile aprire il canale verso la coda\r\n", err)
 	defer ch.Close()
 
 	q, err := ch.QueueDeclare(
@@ -49,7 +49,7 @@ func ActAsServer() {
 		false,           // no-wait
 		nil,             // arguments
 	)
-	utils.ExitOnError("Impossibile dichiarare la coda", err)
+	utils.ExitOnError("Impossibile dichiarare la coda\r\n", err)
 
 	msgs, err := ch.Consume(
 		q.Name, // queue
@@ -61,7 +61,7 @@ func ActAsServer() {
 		nil,    // args
 	)
 	if err != nil {
-		utils.ExitOnError("Impossibile registrare un consumer sulla coda", err)
+		utils.ExitOnError("Impossibile registrare un consumer sulla coda\r\n", err)
 	}
 
 	var forever chan struct{}
@@ -90,7 +90,7 @@ func ActAsServer() {
 			//================================================================*/
 			conn, err := grpc.Dial(message.IpAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				log.Fatalf(err.Error())
+				utils.ExitOnError("[*ERROR*] - gRPC Dial Failed\r\n", err)
 			}
 			log.Println(message)
 
@@ -100,7 +100,7 @@ func ActAsServer() {
 				client := proto.NewFileServiceClient(conn)
 				clientStream, err := client.Download(context.Background())
 				if err != nil {
-					log.Fatalf(err.Error())
+					utils.ExitOnError("[*ERROR*] - Failed to call Download operation via gRPC\r\n", err)
 				}
 				// TODO Aggiungere ricerca all'interno della rete ed eventuale download del file da S3
 
@@ -108,7 +108,7 @@ func ActAsServer() {
 				// Apri il file locale da cui verranno letti i chunks
 				localFile, err := os.Open("/files/" + message.FileName)
 				if err != nil {
-					log.Fatalf(err.Error())
+					utils.ExitOnError("[*ERROR*] - File opening failed\r\n", err)
 				}
 				defer localFile.Close()
 				chunkSize := 1024 // dimensione del chunk
@@ -119,35 +119,35 @@ func ActAsServer() {
 						break
 					}
 					if err != nil {
-						log.Fatalf(err.Error())
+						utils.ExitOnError("[*ERROR*] - Failed during read operation\r\n", err)
 					}
 					clientStream.Send(&proto.FileChunk{RequestId: message.RequestId, FileName: message.FileName, Chunk: buffer[:n]})
 				}
 
 				response, err := clientStream.CloseAndRecv()
 				if err != nil {
-					log.Fatalf(err.Error())
+					utils.ExitOnError("[*ERROR*] - Couldn't close clientstream\r\n", err)
 				}
 				if response.RequestId != message.RequestId {
-					log.Printf("RequestID '%d' non riconosciuto! Expected --> '%d' ", response.RequestId, message.RequestId)
+					log.Printf("[*ERROR*] - RequestID '%d' non riconosciuto! Expected --> '%d' \r\n", response.RequestId, message.RequestId)
 				} else if !response.Success {
-					log.Printf("ERRORE nello scaricamento del File %s [REQ_ID: %d]", message.FileName, message.RequestId)
+					log.Printf("[*ERROR*] - nello scaricamento del File '%s' [REQ_ID: %d]\r\n", message.FileName, message.RequestId)
 				} else {
-					log.Printf("File %s caricato con successo [REQ_ID: %d]", message.FileName, message.RequestId)
+					log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.RequestId)
 				}
 				break
 			case "PUT":
 				client := proto.NewFileServiceClient(conn)
 				clientStream, err := client.Upload(context.Background(), &proto.FileUploadRequest{RequestId: message.RequestId, FileName: message.FileName})
 				if err != nil {
-					log.Fatalf(err.Error())
+					utils.ExitOnError("[*ERROR*] - Failed to call Upload operation via gRPC\r\n", err)
 				}
 				//il client invia il file --> l'Edge scarica i chunks (tramite questo stream)
 
 				// Apri il file locale dove verranno scritti i chunks
-				localFile, err := os.Create(message.FileName)
+				localFile, err := os.Create("/files/" + message.FileName)
 				if err != nil {
-					log.Fatalf(err.Error())
+					utils.ExitOnError("[*ERROR*] - File creation failed\r\n", err)
 				}
 				defer localFile.Close()
 
@@ -157,21 +157,21 @@ func ActAsServer() {
 						break
 					}
 					if err != nil {
-						log.Fatalf(err.Error())
+						utils.ExitOnError("[*ERROR*] - Failed while receiving chunks from clientstream via gRPC\r\n", err)
 					}
 					_, err = localFile.Write(fileChunk.Chunk)
 					if err != nil {
-						log.Fatalf(err.Error())
+						utils.ExitOnError("[*ERROR*] - Couldn't write chunk on local file\r\n", err)
 					}
 				}
 
-				log.Printf("File %s scaricato con successo", message.FileName)
+				log.Printf("[*SUCCESS*] - File '%s' scaricato con successo\r\n", message.FileName)
 				break
 			}
 			conn.Close()
 		}
 	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	log.Printf("[*] Waiting for messages. To exit press CTRL+C\r\n")
 	<-forever
 }

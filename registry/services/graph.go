@@ -1,6 +1,6 @@
 package services
 
-func FindConnectedComponents(peerMap map[EdgePeer]([]EdgePeer)) [][]EdgePeer {
+func FindConnectedComponents(peerMap map[EdgePeer](map[EdgePeer]byte)) [][]EdgePeer {
 	visitedMap := make(map[EdgePeer](bool))
 	for edge := range peerMap {
 		visitedMap[edge] = false
@@ -18,12 +18,11 @@ func FindConnectedComponents(peerMap map[EdgePeer]([]EdgePeer)) [][]EdgePeer {
 }
 
 // Recursive search for connected components
-func recursiveConnectedComponentsResearch(peerMap map[EdgePeer]([]EdgePeer), peer EdgePeer, visitedMap map[EdgePeer](bool)) []EdgePeer {
+func recursiveConnectedComponentsResearch(peerMap map[EdgePeer](map[EdgePeer]byte), peer EdgePeer, visitedMap map[EdgePeer](bool)) []EdgePeer {
 	visitedMap[peer] = true
 	foundedPeers := make([]EdgePeer, 0)
 	peerNeighbours := peerMap[peer]
-	for index := range peerNeighbours {
-		neighbour := peerNeighbours[index]
+	for neighbour := range peerNeighbours {
 		visited, isInMap := visitedMap[neighbour]
 		// Non è detto che il nodo sia chiave nel grafo
 		// Quando mi arriva heartbeat dopo ripresa del registry, il nodo mi dice i suoi vicini, ma io aggiungo solo il nodo da cui ho ricevuto heartbeat

@@ -12,11 +12,21 @@ import (
 	"time"
 )
 
-var connectionMap ConnectionMap = ConnectionMap{sync.RWMutex{}, make(map[EdgePeer](*rpc.Client))}
+var connectionMap ConnectionMap = ConnectionMap{
+	sync.RWMutex{},
+	make(map[EdgePeer](*rpc.Client)),
+}
 
-var graphMap GraphMap = GraphMap{sync.RWMutex{}, make(map[EdgePeer]([]EdgePeer))}
+var graphMap GraphMap = GraphMap{
+	mutex:   sync.RWMutex{},
+	peerMap: map[EdgePeer](map[EdgePeer](byte)){},
+}
 
-var heartbeatMap HeartbeatMap = HeartbeatMap{sync.RWMutex{}, time.Now(), make(map[EdgePeer](time.Time))}
+var heartbeatMap HeartbeatMap = HeartbeatMap{
+	sync.RWMutex{},
+	time.Now(),
+	make(map[EdgePeer](time.Time)),
+}
 
 func ActAsRegistry() {
 	registryService := new(RegistryService)
@@ -36,29 +46,35 @@ func ActAsRegistry() {
 	// go monitorNetwork()
 	go http.Serve(list, nil)
 	go checkForDeadPeers()
+	go monitorNetwork()
 }
 
-func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *[]EdgePeer) error {
+func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]byte) error {
 	log.Println("Entered " + edgePeer.PeerAddr)
 	graphMap.mutex.Lock()
+	connectionMap.mutex.Lock()
+	heartbeatMap.mutex.Lock()
+
+	defer heartbeatMap.mutex.Unlock()
+	defer connectionMap.mutex.Unlock()
 	defer graphMap.mutex.Unlock()
 
-	peerConnection, err := connectToPeer(edgePeer)
+	peerConnection, err := connectToNode(edgePeer)
 	if err != nil {
 		return errors.New("impossibile stabilire connessione con il peer")
 	}
-	connectionMap.mutex.Lock()
+
 	connectionMap.connections[edgePeer] = peerConnection
-	connectionMap.mutex.Unlock()
 
 	neighboursList := findNeighboursForPeer(edgePeer)
 	graphMap.peerMap[edgePeer] = neighboursList
 
-	for index := range neighboursList {
-		neighbour := neighboursList[index]
-		graphMap.peerMap[neighbour] = append(graphMap.peerMap[neighbour], edgePeer)
+	for neighbour := range neighboursList {
+		graphMap.peerMap[neighbour][edgePeer] = 0
 	}
 	log.Println(graphMap.peerMap)
+
+	heartbeatMap.heartbeats[edgePeer] = time.Now()
 
 	*replyPtr = neighboursList
 	return nil
@@ -74,8 +90,7 @@ func (r *RegistryService) PeerExit(edgePeer EdgePeer, replyPtr *int) error {
 	return nil
 }
 
-// TODO: Quando
-func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *[]EdgePeer) error {
+func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *map[EdgePeer]byte) error {
 	heartbeatMap.mutex.Lock()
 	graphMap.mutex.Lock()
 	connectionMap.mutex.Lock()
@@ -93,10 +108,16 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 		// TODO Il peer non è presente nel sistema --> Era stato tolto oppure ho un recupero dal fallimento
 		// Aggiungere l'elenco dei peer nel graphMap
 		// Ritorno lo stesso di ciò che mi è stato inviato
-		// Devo stabilire la connessione verso questo peer
-
+		log.Println("Trovato Peer Attivo >>> " + edgePeer.PeerAddr)
 		graphMap.peerMap[edgePeer] = heartbeatMessage.NeighboursList
-		client, err := connectToPeer(edgePeer)
+
+		for neighbourPeer := range heartbeatMessage.NeighboursList {
+			// Reinserisco il nodo nelle connessioni dei vicini
+			graphMap.peerMap[neighbourPeer][edgePeer] = 0
+		}
+
+		// Il nodo è ancora vivo (oppure l'ho ritrovato dopo il ripristino) quindi riapro la connessione e reimposto l'heartbeat
+		client, err := connectToNode(edgePeer)
 		if err != nil {
 			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr)
 		}
@@ -104,8 +125,9 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 
 		*replyPtr = heartbeatMessage.NeighboursList
 	}
-	now := time.Now()
-	heartbeatMap.heartbeats[edgePeer] = now
+	heartbeatMap.heartbeats[edgePeer] = time.Now()
+
+	log.Println("Heartbeat From >> " + edgePeer.PeerAddr)
 
 	return nil
 }

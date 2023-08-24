@@ -6,36 +6,29 @@ import (
 	"sync"
 )
 
-type PeerConnection struct {
-	peer   EdgePeer
-	client *rpc.Client
-}
-
 type AdjacentPeers struct {
 	mutex     sync.RWMutex
-	peerConns []PeerConnection
+	peerConns map[EdgePeer](*rpc.Client)
 }
 
 type HeartbeatMessage struct {
 	EdgePeer       EdgePeer
-	NeighboursList []EdgePeer
+	NeighboursList map[EdgePeer]byte
 }
 
-var Adjacent = AdjacentPeers{sync.RWMutex{}, []PeerConnection{}}
-var RegistryConn PeerConnection
+var adjacentsMap = AdjacentPeers{sync.RWMutex{}, map[EdgePeer]*rpc.Client{}}
 
 // Aggiunge una connessione verso un nuovo vicino
-func AddConnection(peerConn PeerConnection) {
-	Adjacent.mutex.Lock()
-	defer Adjacent.mutex.Unlock()
-
-	Adjacent.peerConns = append(Adjacent.peerConns, peerConn)
+func addConnection(edgePeer EdgePeer, conn *rpc.Client) {
+	adjacentsMap.mutex.Lock()
+	defer adjacentsMap.mutex.Unlock()
+	adjacentsMap.peerConns[edgePeer] = conn
 }
 
 // Comunica ai tuoi vicini di aggiungerti come loro vicino
 func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
-	Adjacent.mutex.Lock()
-	defer Adjacent.mutex.Unlock()
+	adjacentsMap.mutex.Lock()
+	defer adjacentsMap.mutex.Unlock()
 
 	err := client.Call("EdgePeer.AddNeighbour", neighbourPeer.PeerAddr, nil)
 
@@ -43,4 +36,12 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 		return errors.New("impossibile stabilire connessione con il nuovo vicino")
 	}
 	return nil
+}
+
+func connectToNode(addr string) (*rpc.Client, string, error) {
+	client, err := rpc.DialHTTP("tcp", addr)
+	if err != nil {
+		return nil, "Errore Dial HTTP", err
+	}
+	return client, "", err
 }
