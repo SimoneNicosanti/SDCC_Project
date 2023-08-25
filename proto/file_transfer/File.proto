@@ -4,12 +4,12 @@ package client;
 option go_package = "../proto";
 
 service FileService {
-    rpc Upload(FileUploadRequest) returns (stream FileChunk);
-    rpc Download(stream FileChunk) returns (Response);
+    rpc Download(FileDownloadRequest) returns (stream FileChunk);
+    rpc Upload(stream FileChunk) returns (Response);
     // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
 }
 
-message FileUploadRequest {
+message FileDownloadRequest {
     int32 request_id = 1;
     string file_name = 2;
 }
