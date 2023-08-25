@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"strings"
 	// boom "github.com/tylertreat/BoomFilters"
 )
 
@@ -30,9 +29,8 @@ var registryClient *rpc.Client
 func ActAsPeer() {
 	// bloomFilter := boom.NewDefaultStableBloomFilter(10000, 0.01)
 	// fmt.Println(bloomFilter)
-
-	addresses, _ := net.InterfaceAddrs()
-	ipAddr := strings.Split(addresses[1].String(), "/")[0]
+	ipAddr, err := utils.GetMyIPAddr()
+	utils.ExitOnError(err.Error(), err)
 
 	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
@@ -57,10 +55,8 @@ func ActAsPeer() {
 	connectAndNotifyYourAdjacent(*adj)
 	log.Println("Connessione con tutti i vicini completata")
 
-	defer registryClientPtr.Close()
+	//defer registryClientPtr.Close()
 
-	var forever chan struct{}
-	<-forever
 }
 
 func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {

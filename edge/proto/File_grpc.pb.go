@@ -19,16 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	FileService_Upload_FullMethodName   = "/client.FileService/Upload"
 	FileService_Download_FullMethodName = "/client.FileService/Download"
+	FileService_Upload_FullMethodName   = "/client.FileService/Upload"
 )
 
 // FileServiceClient is the client API for FileService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FileServiceClient interface {
-	Upload(ctx context.Context, in *FileUploadRequest, opts ...grpc.CallOption) (FileService_UploadClient, error)
-	Download(ctx context.Context, opts ...grpc.CallOption) (FileService_DownloadClient, error)
+	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadClient, error)
+	Upload(ctx context.Context, opts ...grpc.CallOption) (FileService_UploadClient, error)
 }
 
 type fileServiceClient struct {
@@ -39,12 +39,12 @@ func NewFileServiceClient(cc grpc.ClientConnInterface) FileServiceClient {
 	return &fileServiceClient{cc}
 }
 
-func (c *fileServiceClient) Upload(ctx context.Context, in *FileUploadRequest, opts ...grpc.CallOption) (FileService_UploadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[0], FileService_Upload_FullMethodName, opts...)
+func (c *fileServiceClient) Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadClient, error) {
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[0], FileService_Download_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &fileServiceUploadClient{stream}
+	x := &fileServiceDownloadClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -54,35 +54,8 @@ func (c *fileServiceClient) Upload(ctx context.Context, in *FileUploadRequest, o
 	return x, nil
 }
 
-type FileService_UploadClient interface {
-	Recv() (*FileChunk, error)
-	grpc.ClientStream
-}
-
-type fileServiceUploadClient struct {
-	grpc.ClientStream
-}
-
-func (x *fileServiceUploadClient) Recv() (*FileChunk, error) {
-	m := new(FileChunk)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-func (c *fileServiceClient) Download(ctx context.Context, opts ...grpc.CallOption) (FileService_DownloadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[1], FileService_Download_FullMethodName, opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &fileServiceDownloadClient{stream}
-	return x, nil
-}
-
 type FileService_DownloadClient interface {
-	Send(*FileChunk) error
-	CloseAndRecv() (*Response, error)
+	Recv() (*FileChunk, error)
 	grpc.ClientStream
 }
 
@@ -90,11 +63,38 @@ type fileServiceDownloadClient struct {
 	grpc.ClientStream
 }
 
-func (x *fileServiceDownloadClient) Send(m *FileChunk) error {
+func (x *fileServiceDownloadClient) Recv() (*FileChunk, error) {
+	m := new(FileChunk)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *fileServiceClient) Upload(ctx context.Context, opts ...grpc.CallOption) (FileService_UploadClient, error) {
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[1], FileService_Upload_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &fileServiceUploadClient{stream}
+	return x, nil
+}
+
+type FileService_UploadClient interface {
+	Send(*FileChunk) error
+	CloseAndRecv() (*Response, error)
+	grpc.ClientStream
+}
+
+type fileServiceUploadClient struct {
+	grpc.ClientStream
+}
+
+func (x *fileServiceUploadClient) Send(m *FileChunk) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *fileServiceDownloadClient) CloseAndRecv() (*Response, error) {
+func (x *fileServiceUploadClient) CloseAndRecv() (*Response, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
@@ -109,8 +109,8 @@ func (x *fileServiceDownloadClient) CloseAndRecv() (*Response, error) {
 // All implementations must embed UnimplementedFileServiceServer
 // for forward compatibility
 type FileServiceServer interface {
-	Upload(*FileUploadRequest, FileService_UploadServer) error
-	Download(FileService_DownloadServer) error
+	Download(*FileDownloadRequest, FileService_DownloadServer) error
+	Upload(FileService_UploadServer) error
 	mustEmbedUnimplementedFileServiceServer()
 }
 
@@ -118,11 +118,11 @@ type FileServiceServer interface {
 type UnimplementedFileServiceServer struct {
 }
 
-func (UnimplementedFileServiceServer) Upload(*FileUploadRequest, FileService_UploadServer) error {
-	return status.Errorf(codes.Unimplemented, "method Upload not implemented")
-}
-func (UnimplementedFileServiceServer) Download(FileService_DownloadServer) error {
+func (UnimplementedFileServiceServer) Download(*FileDownloadRequest, FileService_DownloadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Download not implemented")
+}
+func (UnimplementedFileServiceServer) Upload(FileService_UploadServer) error {
+	return status.Errorf(codes.Unimplemented, "method Upload not implemented")
 }
 func (UnimplementedFileServiceServer) mustEmbedUnimplementedFileServiceServer() {}
 
@@ -137,34 +137,16 @@ func RegisterFileServiceServer(s grpc.ServiceRegistrar, srv FileServiceServer) {
 	s.RegisterService(&FileService_ServiceDesc, srv)
 }
 
-func _FileService_Upload_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(FileUploadRequest)
+func _FileService_Download_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(FileDownloadRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(FileServiceServer).Upload(m, &fileServiceUploadServer{stream})
-}
-
-type FileService_UploadServer interface {
-	Send(*FileChunk) error
-	grpc.ServerStream
-}
-
-type fileServiceUploadServer struct {
-	grpc.ServerStream
-}
-
-func (x *fileServiceUploadServer) Send(m *FileChunk) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _FileService_Download_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(FileServiceServer).Download(&fileServiceDownloadServer{stream})
+	return srv.(FileServiceServer).Download(m, &fileServiceDownloadServer{stream})
 }
 
 type FileService_DownloadServer interface {
-	SendAndClose(*Response) error
-	Recv() (*FileChunk, error)
+	Send(*FileChunk) error
 	grpc.ServerStream
 }
 
@@ -172,11 +154,29 @@ type fileServiceDownloadServer struct {
 	grpc.ServerStream
 }
 
-func (x *fileServiceDownloadServer) SendAndClose(m *Response) error {
+func (x *fileServiceDownloadServer) Send(m *FileChunk) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *fileServiceDownloadServer) Recv() (*FileChunk, error) {
+func _FileService_Upload_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(FileServiceServer).Upload(&fileServiceUploadServer{stream})
+}
+
+type FileService_UploadServer interface {
+	SendAndClose(*Response) error
+	Recv() (*FileChunk, error)
+	grpc.ServerStream
+}
+
+type fileServiceUploadServer struct {
+	grpc.ServerStream
+}
+
+func (x *fileServiceUploadServer) SendAndClose(m *Response) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *fileServiceUploadServer) Recv() (*FileChunk, error) {
 	m := new(FileChunk)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -193,13 +193,13 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Upload",
-			Handler:       _FileService_Upload_Handler,
+			StreamName:    "Download",
+			Handler:       _FileService_Download_Handler,
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "Download",
-			Handler:       _FileService_Download_Handler,
+			StreamName:    "Upload",
+			Handler:       _FileService_Upload_Handler,
 			ClientStreams: true,
 		},
 	},

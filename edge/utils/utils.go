@@ -3,10 +3,14 @@ package utils
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"log"
+	"math/rand"
+	"net"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func ExitOnError(errorMessage string, err error) {
@@ -65,4 +69,47 @@ func GetIntegerEnvironmentVariable(variableName string) int64 {
 	variableInt, err := strconv.ParseInt(variableString, 10, 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return variableInt
+}
+
+func isPortAvailable(port int) bool {
+	listenAddr := fmt.Sprintf(":%d", port)
+	lis, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return false
+	}
+	defer lis.Close()
+	return true
+}
+
+func GetRandomPort() int {
+	rand.Seed(time.Now().UnixNano())
+	minPort := 50000
+	maxPort := 60000
+	for {
+		port := rand.Intn(maxPort-minPort+1) + minPort
+		if isPortAvailable(port) {
+			return port
+		}
+	}
+}
+
+func GetMyIPAddr() (string, error) {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	// Loop through addresses to find a suitable one
+	for _, addr := range addresses {
+		ipNet, ok := addr.(*net.IPNet)
+		if ok && !ipNet.IP.IsLoopback() {
+			ipAddr := ipNet.IP.String()
+			// Skip IPv6 addresses
+			if ipNet.IP.To4() != nil {
+				return ipAddr, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no suitable IP address found")
 }

@@ -1,10 +1,11 @@
 from controller import Controller
+from engineering.Message import Method
 
 def perform_get(file_name):
     print(f"DOWNLOADING: {file_name}")
     
     # Implementazione per l'azione GET
-    Controller.getFile(fileName = file_name)
+    Controller.sendRequestForFile(Method.GET, fileName = file_name)
 
     print(f"DOWNLOADED: {file_name}")
 
@@ -12,7 +13,7 @@ def perform_put(file_name):
     print(f"UPLOADING: {file_name}")
 
     # Implementazione per l'azione PUT
-    Controller.putFile(fileName = file_name)
+    Controller.sendRequestForFile(Method.PUT, fileName = file_name)
     
     print(f"UPLOADED: {file_name}")
 
@@ -20,9 +21,11 @@ def perform_delete(file_name):
     print(f"DELETING: {file_name}")
 
     # Implementazione per l'azione DELETE
-    Controller.deleteFile(fileName = file_name)
+    Controller.sendRequestForFile(Method.DEL, fileName = file_name)
     
     print(f"DELETED: {file_name}")
+
+def 
 
 def main():
     print("Benvenuto nella CLI di gestione file!")

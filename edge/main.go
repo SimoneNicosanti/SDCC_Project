@@ -1,6 +1,7 @@
 package main
 
 import (
+	"edge/peer"
 	"edge/server"
 	"edge/utils"
 )
@@ -9,7 +10,10 @@ import (
 
 func main() {
 	utils.SetupEnvVariables("conf.properties")
-	//peer.ActAsPeer()
-	server.ActAsServer()
+	serverIpAddr := peer.ActAsPeer()
+	server.ActAsServer(serverIpAddr)
+
+	var forever chan struct{}
+	<-forever
 
 }
