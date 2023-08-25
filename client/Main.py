@@ -15,7 +15,8 @@ import configuration
 if __name__ == "__main__":
     # LoginInterface.startup_login_interface()
     Controller.login("sae", "admin", "admin@sae.com")
+    configuration.setUpEnvironment("conf.properties")
+    OptionsInterface.main()
     #configuration.main()
-    #OptionsInterface.main()
 
     

@@ -60,9 +60,9 @@ func GetEnvironmentVariable(variableName string) string {
 	return variableString
 }
 
-func GetIntegerEnvironmentVariable(variableName string) int64 {
+func GetIntegerEnvironmentVariable(variableName string) int {
 	variableString := GetEnvironmentVariable(variableName)
 	variableInt, err := strconv.ParseInt(variableString, 10, 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
-	return variableInt
+	return int(variableInt)
 }

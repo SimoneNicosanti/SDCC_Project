@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"time"
 	// boom "github.com/tylertreat/BoomFilters"
 )
 
@@ -125,4 +126,42 @@ func listenLoop(listener net.Listener) {
 	for {
 		http.Serve(listener, nil)
 	}
+}
+
+func temporizedNotifyBloomFilters() {
+	FILTER_NOTIFY_TIME := utils.GetIntegerEnvironmentVariable("FILTER_NOTIFY_TIME")
+	for {
+		time.Sleep(time.Duration(FILTER_NOTIFY_TIME) * time.Second)
+		notifyBloomFilters()
+	}
+}
+
+func notifyBloomFilters() {
+	adjacentsMap.connsMutex.RLock()
+	adjacentsMap.filtersMutex.RLock()
+	selfBloomFilter.mutex.RLock()
+
+	for edgePeer, adjConn := range adjacentsMap.peerConns {
+		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: selfBloomFilter.filter}
+		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
+		if err != nil {
+			log.Println("Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
+		}
+	}
+
+	selfBloomFilter.mutex.RUnlock()
+	adjacentsMap.filtersMutex.RUnlock()
+	adjacentsMap.connsMutex.RUnlock()
+}
+
+// TODO Controllar bene sincronizzazione e alternanza semafori
+func counterNotifyBloomFilters() {
+	selfBloomFilter.mutex.RLock()
+
+	changesNum := selfBloomFilter.changes
+	if changesNum > utils.GetIntegerEnvironmentVariable("FILTER_CHANGES_THR") {
+		notifyBloomFilters()
+	}
+
+	selfBloomFilter.mutex.RUnlock()
 }

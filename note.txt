@@ -98,3 +98,12 @@ In qualsiasi caso senza alcuna traccia "E' come cercare di trattenere l'acqua co
 Spero che lei possa darci qualche indicazione o possa aiutarci a metterci in contatto con la professoressa Cardellini.
 In attesa di un suo riscontro le auguro una buona serata. Cordiali Saluti
 
+=====================================================================
+
+3. **Uso di ID univoci**: Assegnare ID univoci ai token
+
+| | \   | |
+| |\ \  | | 
+| | \ \ | |
+| |  \ \| |
+ 

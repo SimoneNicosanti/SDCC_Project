@@ -10,17 +10,17 @@ service FileService {
 }
 
 message FileDownloadRequest {
-    int32 request_id = 1;
+    string ticket_id = 1;
     string file_name = 2;
 }
 
 message FileChunk {
-    int32 request_id = 1;
+    string ticket_id = 1;
     string file_name = 2;
     bytes chunk = 3;
 }
 
 message Response {
-    int32 request_id = 1;
+    string ticket_id = 1;
     bool success = 2;
 }

@@ -31,6 +31,7 @@ func checkForDeadPeers() {
 		// Quindi devo rimuoverlo dal grafo
 		// Nelle altre strutture dati non c'è perché viene aperta connessione / aperto heartbeat solo se è stato
 		// ricevuti il primo heartbeat
+		// TODO Ricontrolla se serve (NB: potrebbe servire per evitare inconsistenza ed eventuali controlli errati sulle componenti connesse)
 		for _, peerEdges := range graphMap.peerMap {
 			for neighbourPeer := range peerEdges {
 				_, isInMap := graphMap.peerMap[neighbourPeer]

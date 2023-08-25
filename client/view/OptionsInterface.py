@@ -1,31 +1,16 @@
 from controller import Controller
-from engineering.Message import Method
+from engineering.Ticket import Method
 
-def perform_get(file_name):
-    print(f"DOWNLOADING: {file_name}")
+def perform_action(request_type : Method, file_name : str):
+    print(f"Richiesta '{request_type.name} {file_name}' in elaborazione.")
     
-    # Implementazione per l'azione GET
-    Controller.sendRequestForFile(Method.GET, fileName = file_name)
+    success : bool = Controller.sendRequestForFile(requestType = request_type, fileName = file_name)
 
-    print(f"DOWNLOADED: {file_name}")
+    if not success:
+        print(f"La richiesta '{request_type.name} {file_name}' e' fallita.") 
+        return
 
-def perform_put(file_name):
-    print(f"UPLOADING: {file_name}")
-
-    # Implementazione per l'azione PUT
-    Controller.sendRequestForFile(Method.PUT, fileName = file_name)
-    
-    print(f"UPLOADED: {file_name}")
-
-def perform_delete(file_name):
-    print(f"DELETING: {file_name}")
-
-    # Implementazione per l'azione DELETE
-    Controller.sendRequestForFile(Method.DEL, fileName = file_name)
-    
-    print(f"DELETED: {file_name}")
-
-def 
+    print(f"Richiesta '{request_type.name} {file_name}' soddisfatta.")
 
 def main():
     print("Benvenuto nella CLI di gestione file!")
@@ -37,11 +22,11 @@ def main():
             file_name = input("Inserisci il nome del file: ").strip()
 
             if action == "get":
-                perform_get(file_name)
+                perform_action(Method.GET, file_name)
             elif action == "put":
-                perform_put(file_name)
+                perform_action(Method.PUT, file_name)
             elif action == "delete":
-                perform_delete(file_name)
+                perform_action(Method.DEL, file_name)
 
             break
         else:

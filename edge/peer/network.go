@@ -12,7 +12,7 @@ func pingsToAdjacents() {
 	PING_FREQUENCY := utils.GetIntegerEnvironmentVariable("PING_FREQUENCY")
 	for {
 		time.Sleep(time.Duration(PING_FREQUENCY) * time.Second)
-		adjacentsMap.mutex.Lock()
+		adjacentsMap.connsMutex.Lock()
 		for adjPeer, adjConn := range adjacentsMap.peerConns {
 			err := adjConn.Call("EdgePeer.Ping", selfPeer, new(int))
 			if err != nil {
@@ -21,7 +21,7 @@ func pingsToAdjacents() {
 				delete(adjacentsMap.peerConns, adjPeer)
 			}
 		}
-		adjacentsMap.mutex.Unlock()
+		adjacentsMap.connsMutex.Unlock()
 	}
 }
 
@@ -37,7 +37,7 @@ func heartbeatToRegistry() {
 		// TODO Perform heartbeat action here
 		// Wait for the specified interval before the next heartbeat
 		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
-		adjacentsMap.mutex.Lock()
+		adjacentsMap.connsMutex.Lock()
 
 		heartbeatMessage := HeartbeatMessage{EdgePeer: selfPeer, NeighboursList: map[EdgePeer]byte{}}
 		for adjPeer := range adjacentsMap.peerConns {
@@ -62,7 +62,7 @@ func heartbeatToRegistry() {
 
 		coerenceWithRegistry(returnMap)
 
-		adjacentsMap.mutex.Unlock()
+		adjacentsMap.connsMutex.Unlock()
 		log.Println("Heartbeat action executed.")
 	}
 }
@@ -104,9 +104,9 @@ func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	}
 
 	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni
-	adjacentsMap.mutex.Lock()
+	adjacentsMap.connsMutex.Lock()
 	adjacentsMap.peerConns[peer] = client
-	defer adjacentsMap.mutex.Unlock()
+	defer adjacentsMap.connsMutex.Unlock()
 
 	addConnection(peer, client)
 

@@ -2,10 +2,12 @@ package utils
 
 import (
 	"bufio"
+	crypto_rand "crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	math_rand "math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -64,11 +66,32 @@ func GetEnvironmentVariable(variableName string) string {
 	return variableString
 }
 
-func GetIntegerEnvironmentVariable(variableName string) int64 {
+func GetIntegerEnvironmentVariable(variableName string) int {
 	variableString := GetEnvironmentVariable(variableName)
 	variableInt, err := strconv.ParseInt(variableString, 10, 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
-	return variableInt
+	return int(variableInt)
+}
+
+func GetFloatEnvironmentVariable(variableName string) float64 {
+	variableString := GetEnvironmentVariable(variableName)
+	variableFloat, err := strconv.ParseFloat(variableString, 64)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return variableFloat
+}
+
+func GetUint8EnvironmentVariable(variableName string) uint8 {
+	variableString := GetEnvironmentVariable(variableName)
+	variableUint_8, err := strconv.ParseUint(variableString, 10, 8)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return uint8(variableUint_8)
+}
+
+func GetUintEnvironmentVariable(variableName string) uint {
+	variableString := GetEnvironmentVariable(variableName)
+	variableUint, err := strconv.ParseUint(variableString, 10, 32)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return uint(variableUint)
 }
 
 func isPortAvailable(port int) bool {
@@ -82,11 +105,11 @@ func isPortAvailable(port int) bool {
 }
 
 func GetRandomPort() int {
-	rand.Seed(time.Now().UnixNano())
+	math_rand.Seed(time.Now().UnixNano())
 	minPort := 50000
 	maxPort := 60000
 	for {
-		port := rand.Intn(maxPort-minPort+1) + minPort
+		port := math_rand.Intn(maxPort-minPort+1) + minPort
 		if isPortAvailable(port) {
 			return port
 		}
@@ -112,4 +135,13 @@ func GetMyIPAddr() (string, error) {
 	}
 
 	return "", fmt.Errorf("no suitable IP address found")
+}
+
+func GenerateRandomID() (string, error) {
+	randomBytes := make([]byte, 16)
+	_, err := crypto_rand.Read(randomBytes)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(randomBytes)[:16], nil
 }

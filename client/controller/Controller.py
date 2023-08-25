@@ -1,53 +1,69 @@
-import concurrent.futures as futures
-from engineering import RabbitSingleton
-from engineering.Message import Message, Method, MessageEncoder
+from engineering import RabbitSingleton, Debug
+from engineering.Ticket import Ticket, Method
 from proto.file_transfer.File_pb2 import *
 from proto.file_transfer.File_pb2_grpc import *
 from utils import Utils
-import json, pika, grpc, socket, secrets, threading, ssl, os
+import json, grpc, os, pika.channel, pika
 
-MAXINT32 = 2147483647
-random_request_id : list = []
+ticket_id_list : list = []
 
-def sendRequestForFile(requestType : Method, fileName : str) -> None:
+def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
     # Otteniamo l'indirizzo del peer da contattare
-    new_id = secrets.randbelow(MAXINT32)
-    peer_addr = getPeer(requestType = requestType, current_request_id = new_id)
+    ticket : Ticket = getTicket()
+    if ticket == None:
+        return None
+    ticket_id_list.append(ticket.ticket_id)
 
-    channel = grpc.insecure_channel(IP DA CONTATTARE)
+    channel = grpc.insecure_channel(ticket.peer_addr)
     stub = FileServiceStub(channel)
 
-    execAction(requestId = new_id, requestType = requestType, filename = fileName, stub = stub)
+    return execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)
 
-    timer = threading.Timer(int(os.environ.get("TTL")), checkSatisfiedRequest(request_id = new_id, filename = fileName))
-    timer.start()
-    
+def callback(ch, method, properties, body):
+    data = json.load(body)
+    serverEndpoint = data['ServerEndpoint']
+    ticket_id = data['Id']
+    ticket = Ticket(serverEndpoint, ticket_id)
+    print(ticket)
 
-    print(f"[*] {requestType} request sent for file '{fileName}' [REQ_ID '{new_id}']")
 
-def getPeer(requestType : Method, current_request_id : int) -> str:
-    global random_request_id
+def getTicket() -> Ticket:
 
     queue_name = os.environ.get("QUEUE_NAME")
-    channel = RabbitSingleton.getRabbitChannel()
+    channel : pika.channel.Channel = RabbitSingleton.getRabbitChannel()
     channel.queue_declare(queue = queue_name, durable=True)
-
-    print(socket.gethostbyname(socket.gethostname())+':50051')
     
-    random_request_id.append(current_request_id)
+    while True :
+        value = channel.basic_consume(queue_name, on_message_callback = callback, auto_ack=True)
+        print(value)
+    
+#import pika
 
-    #TODO modificare logica coda: ora il client legge il peer da contattare
-    message : Message = Message(random_request_id, requestType, fileName, socket.gethostbyname(socket.gethostname())+':50051')
-    channel.basic_publish(
-        exchange = '', 
-        routing_key = queue_name, 
-        body = json.dumps(obj = message, cls = MessageEncoder),
-        properties = pika.BasicProperties(delivery_mode = pika.spec.PERSISTENT_DELIVERY_MODE)
-    )
+# Set up connection parameters
+#connection_params = pika.ConnectionParameters('localhost')
+#connection = pika.BlockingConnection(connection_params)
+#channel = connection.channel()
+
+# Declare a queue
+#queue_name = 'my_queue'
+#channel.queue_declare(queue=queue_name)
+
+#while True:
+#    method_frame, header_frame, body = channel.basic_get(queue=queue_name)
+#    
+#    if method_frame:
+#        print(f"Received message: {body.decode()}")
+#        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+#    else:
+#        print("No messages in the queue")
+#        break
+#
+#connection.close()
 
 
-def execAction(request_id : int, requestType : Method, filename : str, stub : FileServiceStub) -> bool:
+
+def execAction(ticket_id : str, requestType : Method, filename : str, stub : FileServiceStub) -> bool:
 
     switch : dict = {
         Method.GET : getFile,
@@ -57,30 +73,33 @@ def execAction(request_id : int, requestType : Method, filename : str, stub : Fi
 
     action = switch(requestType)
 
-    result = action(filename, request_id, stub)
+    Debug.debug(f"Invio della richiesta di '{requestType.name} {filename}' all'edge peer")
+
+    # Esecuzione dell'azione
+    result = action(filename, ticket_id, stub)
     
-    if result == True:
-        random_request_id.remove(request_id)
+    # Rimuoviamo il ticket dalla lista di ticket_id che stiamo usando
+    ticket_id_list.remove(ticket_id)
     
     return result
 
-def getFile(filename : str, request_id : int, stub : FileServiceStub) -> bool :
+def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     # Otteniamo i chunks dalla chiamata gRPC
-    chunks = stub.Download(FileDownloadRequest(request_id=request_id, file_name=filename))
+    chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
 
     # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
-    return FileService().writeChunks(chunks)
+    return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks)
 
 
-def putFile(fileName : str, request_id : int, stub : FileServiceStub) -> bool :
+def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     # Dividiamo il file in chunks
-    chunks = FileService.getChunks()
+    chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
 
     # Effettuiamo la chiamata gRPC 
     response : Response = stub.Upload(chunks)
 
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
-    if response.request_id != request_id:
+    if response.ticket_id != ticket_id:
         raise Exception()
     
     return response.success
@@ -90,41 +109,18 @@ def deleteFile(fileName : str) -> bool:
     #TODO
     pass
 
-def checkSatisfiedRequest(request_id : int, filename : str) -> None:
-    if request_id in random_request_id:
-        print("La richiesta per il file '{filename}' non è stata soddisfatta. Prova ad effettuare una nuova richiesta.")
-        random_request_id.remove(request_id)
-
-def serve():
-    #TODO TLS CONFIGURATION =======================================================
-    # Load your server's certificate and private key
-    #server_cert = open("/src/tls/server-cert.pem", "rb").read()
-    #server_key = open("/src/tls/server-key.pem", "rb").read()
-    # Create server credentials using the loaded certificate and key
-    #server_credentials = grpc.ssl_server_credentials(((server_key, server_cert),))
-    #==============================================================================
-
-    # Create a gRPC server with secure credentials
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    add_FileServiceServicer_to_server(FileService(), server)
-    server.add_insecure_port('[::]:50051')
-    #TODO server.add_secure_port('[::]:50051', server_credentials)
-    server.start()
-
-
 def login(username : str, passwd : str, email : str) -> bool :
     if username == "sae" and passwd == "admin" and email == "admin@sae.com":
-        serve()
         return True
 
 
 class FileService:
-    global random_request_id
+    global ticket_id_list
 
-    def getChunks(self, request_id : int, filename : str):
+    def getChunks(self, ticket_id : str, filename : str):
         #Security check
-        if request_id not in random_request_id:
-            print(f"[*ERROR*] - Security check failed --> {request_id} is not in the expected request list")
+        if ticket_id not in ticket_id_list:
+            Debug.debug(f"[*ERROR*] - Security check failed --> {ticket_id} is not in the opened ticket list")
             return
 
         try:
@@ -132,54 +128,31 @@ class FileService:
                 chunkSize = int(Utils.readProperties("conf.properties", "CHUNK_SIZE"))
                 chunk = file.read(chunkSize)
                 while chunk:
-                    fileChunk : FileChunk = FileChunk(request_id = request_id, file_name = filename, chunk = chunk)
+                    fileChunk : FileChunk = FileChunk(ticket_id = ticket_id, file_name = filename, chunk = chunk)
                     yield fileChunk
                     chunk = file.read(chunkSize)
         except IOError as e:
-            print("[*ERROR*] - Couldn't open the file:", str(e))
-        
+            Debug.debug(f"[*ERROR*] - Couldn't open the file: {str(e)}")
 
-    def writeChunks(self, request_iterator):
-        
+    def writeChunks(self, ticket_id : str, chunks):
         try:
-            return self.downloadFile(request_iterator)
+            return self.downloadFile(ticket_id, chunks)
         except IOError as e:
-            print("[*ERROR*] - downloadFile(request_iterator) failed", str(e))
+            Debug.debug(f"[*ERROR*] - {str(e)}")
             return False
 
-    def downloadFile(request_iterator) -> Response:
-        def secure_write(request_id, file, chunk, current_request_id = None) -> bool:
-            #Security check
-            if current_request_id == None:
-                if request_id not in random_request_id:
-                    print(f"[*ERROR*] - Security check failed --> {request_id} is not in the expected request list")
-                    return False
-            else:
-                if request_id != current_request_id:
-                    print(f"[*ERROR*] - Security check failed --> one of the chunk has a different request_id: {request_id}(current_chunk)!={current_request_id}(other_chunk)")
-                    return False
-            file.write(chunk)
-            return True
-        #-----------------------------------------
+    def downloadFile(ticket_id : str, chunk_list) -> bool:
 
-        chunk : FileChunk = next(request_iterator)
+        chunk : FileChunk = next(chunk_list)
         filename = chunk.file_name
-        current_request_id = chunk.request_id
         try:
-            with open("/files/" + filename, "wb") as file:
-                if not secure_write(chunk.request_id, file, chunk.chunk):
-                    return False
-                for chunk in request_iterator:
-                    chunk : FileChunk
-                    
-                    if not secure_write(chunk.request_id, file, chunk.chunk):
-                        return False
-        except IOError as e:
-            print("[*ERROR*] - Couldn't open the file:", str(e))
+            with open("/files/" + filename, "x") as file:
+                file.write(chunk.chunk)
+                for chunk in chunk_list:
+                    file.write(chunk.chunk)
 
-        random_request_id.remove(current_request_id)
+        except IOError as e:
+            Debug.debug(f"[*ERROR*] - Couldn't open the file: {str(e)}")
+            return False
+
         return True
-    
-    
-        
-        

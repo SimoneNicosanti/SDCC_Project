@@ -1,16 +1,13 @@
 import os
 import jproperties
 
-def set_properties_as_env_variables(config):
-	for key, value in config.items():
-	    os.environ[key] = value.data
+	
 
-def main():
-	filename = "conf.properties"
+def setUpEnvironment(propertiesFile : str):
 
-	properties_config = jproperties.Properties()
+	config = jproperties.Properties()
 
-	with open(filename, "rb") as properties_file :
-		properties_config.load(properties_file)
-
-		set_properties_as_env_variables(properties_config)
+	with open(propertiesFile, "rb") as properties_file :
+		config.load(properties_file)
+		for key, value in config.items():
+			os.environ[key] = value.data

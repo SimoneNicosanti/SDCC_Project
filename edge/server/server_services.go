@@ -40,17 +40,17 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 		}
 	}
 
-	response := proto.Response{RequestId: message.RequestId, Success: true}
+	response := proto.Response{TicketId: message.TicketId, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
 		return fmt.Errorf("[*ERROR*] - Couldn't close clientstream\r\n%s", err.Error())
 	}
-	// if response.RequestId != message.RequestId {
-	// 	log.Printf("[*ERROR*] - RequestID '%d' non riconosciuto! Expected --> '%d' \r\n", response.RequestId, message.RequestId)
+	// if response.TicketId != message.TicketId {
+	// 	log.Printf("[*ERROR*] - TicketId '%d' non riconosciuto! Expected --> '%d' \r\n", response.TicketId, message.TicketId)
 	// } else if !response.Success {
-	// 	log.Printf("[*ERROR*] - nello scaricamento del File '%s' [REQ_ID: %d]\r\n", message.FileName, message.RequestId)
+	// 	log.Printf("[*ERROR*] - nello scaricamento del File '%s' [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
 	// } else {
-	// 	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.RequestId)
+	// 	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
 	// }
 
 	//TODO Add token release on rabbitMQ Queue
@@ -74,10 +74,15 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 		if err != nil {
 			return fmt.Errorf("[*ERROR*] - Failed during read operation\r\n%s", err.Error())
 		}
-		downloadStream.Send(&proto.FileChunk{RequestId: requestMessage.RequestId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
+		downloadStream.Send(&proto.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
 	}
 
 	//TODO Add token release on rabbitMQ Queue
-
+	// estraiDaCoda
+	// download
+	// edge --> download (rilascio nuovo token)
+	// --- cade client
+	// NO ack
+	//possibile soluzione --> random_request_id
 	return nil
 }

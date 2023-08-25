@@ -9,6 +9,15 @@ func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 	return nil
 }
 
+func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, returnPtr *int) error {
+	adjacentsMap.filtersMutex.Lock()
+	defer adjacentsMap.filtersMutex.Unlock()
+	edgePeer := bloomFilterMessage.EdgePeer
+	adjacentsMap.filterMap[edgePeer] = bloomFilterMessage.BloomFilter
+	*returnPtr = 0
+	return nil
+}
+
 func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	_, err := connectAndAddNeighbour(peer)
 
