@@ -2,7 +2,7 @@ package peer
 
 import "log"
 
-// TODO Togliere il ping?? Ha sempre ragione il registry
+// TODO Togliere il ping?? Ha sempre ragione il registry: potrebbe funzionare anche con, ma la logica rimane abbastanza simile
 func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 	log.Println("Ping Ricevuto da >>> ", edgePeer.PeerAddr)
 	*returnPtr = 0

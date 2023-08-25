@@ -26,6 +26,20 @@ func checkForDeadPeers() {
 		}
 		heartbeatMap.lastChecked = time.Now()
 
+		// Se c'è stato il recupero, allora tutti quanti devono avermi mandato heartbeat da quando ho recuperato
+		// Se qualcuno non l'ha fatto ed è caduto, potrebbe essere presente nella lista degli archi mandata dagli altri
+		// Quindi devo rimuoverlo dal grafo
+		// Nelle altre strutture dati non c'è perché viene aperta connessione / aperto heartbeat solo se è stato
+		// ricevuti il primo heartbeat
+		for _, peerEdges := range graphMap.peerMap {
+			for neighbourPeer := range peerEdges {
+				_, isInMap := graphMap.peerMap[neighbourPeer]
+				if !isInMap {
+					removeDeadNode(neighbourPeer)
+				}
+			}
+		}
+
 		connectionMap.mutex.Unlock()
 		graphMap.mutex.Unlock()
 		heartbeatMap.mutex.Unlock()

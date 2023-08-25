@@ -111,17 +111,23 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 		log.Println("Trovato Peer Attivo >>> " + edgePeer.PeerAddr)
 		graphMap.peerMap[edgePeer] = heartbeatMessage.NeighboursList
 
+		// Lo aggiungo solo se quel nodo è già presente nella mappa, altrimenti devo aspettare il suo heartbeat
 		for neighbourPeer := range heartbeatMessage.NeighboursList {
 			// Reinserisco il nodo nelle connessioni dei vicini
-			graphMap.peerMap[neighbourPeer][edgePeer] = 0
+			neighEdges, isInMap := graphMap.peerMap[neighbourPeer]
+			if isInMap {
+				neighEdges[edgePeer] = 0
+			}
 		}
 
 		// Il nodo è ancora vivo (oppure l'ho ritrovato dopo il ripristino) quindi riapro la connessione e reimposto l'heartbeat
 		client, err := connectToNode(edgePeer)
 		if err != nil {
+			// TODO Stabilire cosa fare in caso di errore
 			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr)
+		} else {
+			connectionMap.connections[edgePeer] = client
 		}
-		connectionMap.connections[edgePeer] = client
 
 		*replyPtr = heartbeatMessage.NeighboursList
 	}

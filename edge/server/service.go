@@ -53,6 +53,8 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 	// 	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.RequestId)
 	// }
 
+	//TODO Add token release on rabbitMQ Queue
+
 	return nil
 }
 
@@ -74,6 +76,8 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 		}
 		downloadStream.Send(&proto.FileChunk{RequestId: requestMessage.RequestId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
 	}
+
+	//TODO Add token release on rabbitMQ Queue
 
 	return nil
 }
