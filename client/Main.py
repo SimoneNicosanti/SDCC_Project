@@ -1,7 +1,7 @@
 #from view import LoginInterface
 from controller import Controller
 from view import OptionsInterface
-import configuration
+import Configuration as Configuration
 
 
 # def proto_attempt() :
@@ -15,7 +15,7 @@ import configuration
 if __name__ == "__main__":
     # LoginInterface.startup_login_interface()
     Controller.login("sae", "admin", "admin@sae.com")
-    configuration.setUpEnvironment("conf.properties")
+    Configuration.setUpEnvironment("conf.properties")
     OptionsInterface.main()
     #configuration.main()
 

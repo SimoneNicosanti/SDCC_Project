@@ -165,3 +165,28 @@ func counterNotifyBloomFilters() {
 
 	selfBloomFilter.mutex.RUnlock()
 }
+
+func lookupForFile(fileName string) {
+	adjacentsMap.connsMutex.Lock()
+	adjacentsMap.filtersMutex.Lock()
+
+	founded := false
+	for adj, adjConn := range adjacentsMap.peerConns {
+		if adjacentsMap.filterMap[adj].Test([]byte(fileName)) {
+			founded = true
+			err := adjConn.Call("EdgePeer.FileLookup", fileName, new(int))
+			if err != nil {
+				log.Println("Errore chiamata Edge " + adj.PeerAddr + " per la ricerca del file")
+			}
+		}
+	}
+	if !founded {
+		// TODO Scegli a caso alcuni vicini e mandagli la richiesta??
+		// Ogni nodo manca anche un filtro che aggrega i suoi vicini??
+		// Vado diretto su S3??
+		// Uso una soglia per stabilire se inoltrare o andare su S3??
+	}
+
+	defer adjacentsMap.filtersMutex.Unlock()
+	defer adjacentsMap.connsMutex.Unlock()
+}
