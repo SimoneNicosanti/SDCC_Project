@@ -9,7 +9,7 @@ class Method(Enum) :
 
 class Ticket :
 
-    def __init__(peer_addr : str, self, ticket_id : str) :
+    def __init__(self, peer_addr : str, ticket_id : str) :
         self.peer_addr : str = peer_addr
         self.ticket_id : str = ticket_id
     

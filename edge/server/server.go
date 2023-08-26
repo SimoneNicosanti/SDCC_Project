@@ -25,12 +25,10 @@ type AuthorizedTicketIDs struct {
 	IDs   []string
 }
 
-var authorizedTicketIDs = AuthorizedTicketIDs{
-	mutex: sync.RWMutex{},
-	IDs:   make([]string, utils.GetIntegerEnvironmentVariable("EDGE_TICKETS_NUM")),
-}
+var authorizedTicketIDs AuthorizedTicketIDs
 
 var serverEndpoint string
+var rabbitChannel *amqp.Channel
 
 func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -51,11 +49,11 @@ func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	return nil
 }
 
-func publishTicket(channel *amqp.Channel, oldTicketIndex int) error {
+func publishNewTicket(oldTicketIndex int) error {
 	count := 0
 	ticket := createTicket(oldTicketIndex)
 	for count < 3 {
-		err := attemptPublishTicket(channel, ticket)
+		err := attemptPublishTicket(rabbitChannel, ticket)
 
 		// La funzione ritorna al primo tentativo con successo
 		if err == nil {
@@ -77,34 +75,32 @@ func createTicket(oldTicketIndex int) Ticket {
 	return ticket
 }
 
-func setupRabbitMQ() *amqp.Channel {
+func setupRabbitMQ() {
 	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
 	utils.ExitOnError("[*ERROR*] -> Impossibile contattare il server RabbitMQ\r\n", err)
 
-	channel, err := conn.Channel()
+	rabbitChannel, err = conn.Channel()
 	utils.ExitOnError("[*ERROR*] -> Impossibile aprire il canale verso la coda\r\n", err)
 
-	_, err = channel.QueueDeclare(utils.GetEnvironmentVariable("QUEUE_NAME"), true, false, false, false, nil)
+	_, err = rabbitChannel.QueueDeclare(utils.GetEnvironmentVariable("QUEUE_NAME"), true, false, false, false, nil)
 	utils.ExitOnError("[*ERROR*] -> Impossibile dichiarare la coda\r\n", err)
-
-	return channel
 }
 
 func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
-
+	authorizedTicketIDs = AuthorizedTicketIDs{
+		mutex: sync.RWMutex{},
+		IDs:   make([]string, utils.GetIntegerEnvironmentVariable("EDGE_TICKETS_NUM")),
+	}
 	for i := 0; i < len(authorizedTicketIDs.IDs); i++ {
-		err := publishTicket(rabbitChannel, i)
+		err := publishNewTicket(i)
 		utils.ExitOnError("[*ERROR*] -> Impossibile pubblicare ticket sulla coda\r\n", err)
 	}
 }
 
 func ActAsServer() {
 	setUpGRPC()
-
-	rabbitChannel := setupRabbitMQ()
-
+	setupRabbitMQ()
 	publishAllTicketsOnQueue(rabbitChannel)
-
 	var forever chan struct{}
 	<-forever
 }

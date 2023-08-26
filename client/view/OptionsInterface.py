@@ -1,34 +1,46 @@
 from controller import Controller
 from engineering.Ticket import Method
+from engineering import MyErrors
+from utils.Utils import *
 
 def perform_action(request_type : Method, file_name : str):
-    print(f"Richiesta '{request_type.name} {file_name}' in elaborazione.")
-    
+    colored_print(f"Richiesta '{request_type.name} {file_name}' in elaborazione.", Color.YELLOW)
+        
     success : bool = Controller.sendRequestForFile(requestType = request_type, fileName = file_name)
+    
 
     if not success:
-        print(f"La richiesta '{request_type.name} {file_name}' e' fallita.") 
+        colored_print(f"La richiesta '{request_type.name} {file_name}' e' fallita.", Color.RED)
         return
 
-    print(f"Richiesta '{request_type.name} {file_name}' soddisfatta.")
+    colored_print(f"Richiesta '{request_type.name} {file_name}' soddisfatta.", Color.GREEN)
 
 def main():
-    print("Benvenuto nella CLI di gestione file!")
+    colored_print("Benvenuto nella CLI di gestione file!", Color.YELLOW)
 
     while True:
-        action = input("Inserisci l'azione (get/put/delete): ").strip().lower()
+        colored_print("Inserisci l'azione (get/put/delete) >>> ", Color.YELLOW, end = "")
+        action = input("").strip().lower()
 
         if action in ["get", "put", "delete"]:
-            file_name = input("Inserisci il nome del file: ").strip()
+            colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
+            file_name = input("").strip()
 
-            if action == "get":
-                perform_action(Method.GET, file_name)
-            elif action == "put":
-                perform_action(Method.PUT, file_name)
-            elif action == "delete":
-                perform_action(Method.DEL, file_name)
-
-            break
+            try:
+                if action == "get":
+                    perform_action(Method.GET, file_name)
+                elif action == "put":
+                    perform_action(Method.PUT, file_name)
+                elif action == "delete":
+                    perform_action(Method.DEL, file_name)
+            except (MyErrors.InvalidTicketException, MyErrors.ConnectionFailedException)  as e:
+                colored_print("Ci sono stati errori durante la connessione con il server. Ritenta.", Color.RED)
+            except MyErrors.RequestFailedException as e:
+                colored_print("Il server non è riuscito a soddisfare la risorsa a causa di qualche errore. Ritenta.", Color.RED)
+            except MyErrors.FileNotFoundException  as e:
+                colored_print("File richiesto non trovato. Il nome del file è corretto?", Color.RED)
         else:
-            print("Azione non valida. Riprova.")
+            colored_print("Azione non valida. Riprova.", Color.RED)
+
+        print("")
 

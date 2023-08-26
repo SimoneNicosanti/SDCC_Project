@@ -3,10 +3,12 @@ package server
 import (
 	"edge/proto"
 	"edge/utils"
-	"fmt"
 	"io"
 	"log"
 	"os"
+
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 type FileServiceServer struct {
@@ -15,23 +17,28 @@ type FileServiceServer struct {
 
 func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
+
 	message, err := uploadStream.Recv()
 	if err != nil {
-		return fmt.Errorf("[*ERROR*] - Failed while receiving chunks from clientstream via gRPC\n%s", err.Error())
+		return status.Error(codes.Code(proto.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from clientstream via gRPC")
 	}
 
-	checkTicket(message.TicketId)
+	isValidRequest := checkTicket(message.TicketId)
+	if isValidRequest == -1 {
+		return status.Error(codes.Code(proto.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request with Invalid Ticket")
+	}
+	defer publishNewTicket(isValidRequest)
 
 	localFile, err := os.Create("/files/" + message.FileName)
 	if err != nil {
-		return fmt.Errorf("[*ERROR*] - File creation failed\n%s", err.Error())
+		return status.Error(codes.Code(proto.ErrorCodes_FILE_CREATE_ERROR), "[*ERROR*] - File creation failed")
 	}
 	defer localFile.Close()
 
 	for {
 		_, err = localFile.Write(message.Chunk)
 		if err != nil {
-			return fmt.Errorf("[*ERROR*] - Couldn't write chunk on local file\r\n%s", err.Error())
+			return status.Error(codes.Code(proto.ErrorCodes_FILE_WRITE_ERROR), "[*ERROR*] - Couldn't write chunk on local file")
 		}
 
 		message, err = uploadStream.Recv()
@@ -39,18 +46,16 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("[*ERROR*] - Failed while receiving chunks from clientstream via gRPC\n%s", err.Error())
+			return status.Error(codes.Code(proto.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from clientstream via gRPC")
 		}
 	}
 
-	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
+	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %s]\r\n", message.FileName, message.TicketId)
 	response := proto.Response{TicketId: message.TicketId, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
-		return fmt.Errorf("[*ERROR*] - Couldn't close clientstream\r\n%s", err.Error())
+		return status.Error(codes.Code(proto.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Couldn't close clientstream")
 	}
-
-	generateNewTicket()
 
 	//TODO Add ticket release on rabbitMQ Queue
 
@@ -58,10 +63,14 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 }
 
 func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, downloadStream proto.FileService_DownloadServer) error {
-	checkTicket(requestMessage.TicketId)
+	isValidRequest := checkTicket(requestMessage.TicketId)
+	if isValidRequest == -1 {
+		return status.Error(codes.Code(proto.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
+	}
+	defer publishNewTicket(isValidRequest)
 	localFile, err := os.Open("/files/" + requestMessage.FileName)
 	if err != nil {
-		return fmt.Errorf("[*ERROR*] - File open failed\n%s", err.Error())
+		return status.Error(codes.Code(proto.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
 	}
 	defer localFile.Close()
 	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE") // dimensione del chunk
@@ -72,26 +81,21 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("[*ERROR*] - Failed during read operation\r\n%s", err.Error())
+			return status.Error(codes.Code(proto.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] - Failed during read operation\r")
 		}
 		downloadStream.Send(&proto.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
 	}
 
-	generateNewTicket()
+	publishNewTicket(isValidRequest)
 	//TODO Add ticket release on rabbitMQ Queue
 	return nil
 }
 
-func checkTicket(requestId string) bool {
-	for _, authRequestId := range authorizedTicketIDs.IDs {
+func checkTicket(requestId string) int {
+	for index, authRequestId := range authorizedTicketIDs.IDs {
 		if requestId == authRequestId {
-			return true
+			return index
 		}
 	}
-	return false
-}
-
-func generateNewTicket() {
-	randomID, err := utils.GenerateUniqueRandomID()
-	if ()
+	return -1
 }

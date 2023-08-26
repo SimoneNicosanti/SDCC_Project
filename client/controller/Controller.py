@@ -1,7 +1,8 @@
-from engineering import RabbitSingleton, Debug
+from engineering import RabbitSingleton, Debug, MyErrors
 from engineering.Ticket import Ticket, Method
 from proto.file_transfer.File_pb2 import *
 from proto.file_transfer.File_pb2_grpc import *
+from grpc import StatusCode
 from asyncio import Semaphore
 from pika.adapters.blocking_connection  import BlockingChannel
 from utils import Utils
@@ -18,15 +19,16 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
     if ticket == None:
         return False
     ticket_id_list.append(ticket.ticket_id)
-
     # Preparazione chiamata gRPC
-    channel = grpc.insecure_channel(ticket.peer_addr)
-    stub = FileServiceStub(channel)
-
+    try:
+        channel = grpc.insecure_channel(ticket.peer_addr)
+        stub = FileServiceStub(channel)
+    except grpc.RpcError as e:
+        if e.code().value[0] == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+        raise e
     # Esecuzione dell'azione
     result = execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)
-
-
     # Rimuoviamo il ticket dalla lista di ticket_id che stiamo usando
     ticket_id_list.remove(ticket.ticket_id)
 
@@ -37,7 +39,7 @@ def callback(ch : BlockingChannel, method, properties, body):
     if method == None:
         data = None
     else:
-        data = json.load(body)
+        data = json.loads(body)
     
     ch.stop_consuming()
 
@@ -50,6 +52,7 @@ def getTicket() -> Ticket:
     
     channel.basic_consume(queue = queue_name, on_message_callback = callback, auto_ack = True)
     # All'interno della callback viene scritto il contenuto del messaggio in 'data'
+    global sem
     sem.acquire()
     channel.start_consuming()
     global data
@@ -58,7 +61,7 @@ def getTicket() -> Ticket:
         serverEndpoint = data['ServerEndpoint']
         ticket_id = data['Id']
         ticket = Ticket(serverEndpoint, ticket_id)
-        Debug.debug(ticket)
+        Debug.debug(f"Acquired ticket '{ticket_id}' on connection {ticket.peer_addr}'")
     # Dopo aver creato il Ticket possiamo rilasciare il semaforo
     sem.release()
 
@@ -74,21 +77,37 @@ def execAction(ticket_id : str, requestType : Method, filename : str, stub : Fil
         Method.DEL : deleteFile
     }
 
-    action = switch(requestType)
+    action = switch[requestType]
 
     Debug.debug(f"Invio della richiesta di '{requestType.name} {filename}' all'edge peer")
 
     # Esecuzione dell'azione
     result = action(filename, ticket_id, stub)
-    
+
     return result
 
 def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     # Otteniamo i chunks dalla chiamata gRPC
-    chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
+    try:
+        chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
+        # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
+        return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks), None
+    except grpc.RpcError as e:
+        if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
+            raise MyErrors.FileNotFoundException("File richiesto non trovato")
+        if e.code().value[0] == ErrorCodes.INVALID_TICKET:
+            raise MyErrors.InvalidTicketException("Ticket usato non valido")
+        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
+            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta")
+        if e.code() == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+        
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
+        raise e
 
-    # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
-    return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks)
+
 
 
 def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
@@ -100,6 +119,7 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
 
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
     if response.ticket_id != ticket_id:
+        #TODO
         raise Exception()
     
     return response.success
@@ -120,7 +140,7 @@ class FileService:
     def getChunks(self, ticket_id : str, filename : str):
         #Security check
         if ticket_id not in ticket_id_list:
-            Debug.debug(f"[*ERROR*] - Security check failed --> {ticket_id} is not in the opened ticket list")
+            Debug.debug(f"Security check failed --> {ticket_id} is not in the opened ticket list")
             return
 
         try:
@@ -132,27 +152,21 @@ class FileService:
                     yield fileChunk
                     chunk = file.read(chunkSize)
         except IOError as e:
-            Debug.debug(f"[*ERROR*] - Couldn't open the file: {str(e)}")
+            Debug.debug(f"Couldn't open the file: {str(e)}")
 
     def writeChunks(self, ticket_id : str, chunks):
-        try:
-            return self.downloadFile(ticket_id, chunks)
-        except IOError as e:
-            Debug.debug(f"[*ERROR*] - {str(e)}")
-            return False
-
-    def downloadFile(ticket_id : str, chunk_list) -> bool:
-
+        return self.downloadFile(ticket_id, chunks)
+        
+    def downloadFile(self, ticket_id : str, chunk_list) -> bool:
         chunk : FileChunk = next(chunk_list)
         filename = chunk.file_name
+        
         try:
-            with open("/files/" + filename, "x") as file:
+            with open("/files/" + filename, "wb") as file:
                 file.write(chunk.chunk)
                 for chunk in chunk_list:
                     file.write(chunk.chunk)
-
         except IOError as e:
-            Debug.debug(f"[*ERROR*] - Couldn't open the file: {str(e)}")
-            return False
+            raise MyErrors.FailedToOpenError()
 
         return True

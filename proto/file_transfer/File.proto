@@ -9,6 +9,17 @@ service FileService {
     // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
 }
 
+enum ErrorCodes {
+    OK = 0;
+    CHUNK_ERROR = 10;
+    INVALID_TICKET = 11;
+    FILE_CREATE_ERROR = 12 ;
+    FILE_NOT_FOUND_ERROR = 13;
+    FILE_WRITE_ERROR = 15;
+    FILE_READ_ERROR = 16;
+    STREAM_CLOSE_ERROR = 17;
+}
+
 message FileDownloadRequest {
     string ticket_id = 1;
     string file_name = 2;

@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x66ile_transfer/File.proto\x12\x06\x63lient\";\n\x13\x46ileDownloadRequest\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\"@\n\tFileChunk\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\x12\r\n\x05\x63hunk\x18\x03 \x01(\x0c\".\n\x08Response\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x32|\n\x0b\x46ileService\x12<\n\x08\x44ownload\x12\x1b.client.FileDownloadRequest\x1a\x11.client.FileChunk0\x01\x12/\n\x06Upload\x12\x11.client.FileChunk\x1a\x10.client.Response(\x01\x42\nZ\x08../protob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x66ile_transfer/File.proto\x12\x06\x63lient\";\n\x13\x46ileDownloadRequest\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\"@\n\tFileChunk\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\x12\r\n\x05\x63hunk\x18\x03 \x01(\x0c\".\n\x08Response\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08*\xad\x01\n\nErrorCodes\x12\x06\n\x02OK\x10\x00\x12\x0f\n\x0b\x43HUNK_ERROR\x10\n\x12\x12\n\x0eINVALID_TICKET\x10\x0b\x12\x15\n\x11\x46ILE_CREATE_ERROR\x10\x0c\x12\x18\n\x14\x46ILE_NOT_FOUND_ERROR\x10\r\x12\x14\n\x10\x46ILE_WRITE_ERROR\x10\x0f\x12\x13\n\x0f\x46ILE_READ_ERROR\x10\x10\x12\x16\n\x12STREAM_CLOSE_ERROR\x10\x11\x32|\n\x0b\x46ileService\x12<\n\x08\x44ownload\x12\x1b.client.FileDownloadRequest\x1a\x11.client.FileChunk0\x01\x12/\n\x06Upload\x12\x11.client.FileChunk\x1a\x10.client.Response(\x01\x42\nZ\x08../protob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,12 +22,14 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'Z\010../proto'
+  _globals['_ERRORCODES']._serialized_start=212
+  _globals['_ERRORCODES']._serialized_end=385
   _globals['_FILEDOWNLOADREQUEST']._serialized_start=36
   _globals['_FILEDOWNLOADREQUEST']._serialized_end=95
   _globals['_FILECHUNK']._serialized_start=97
   _globals['_FILECHUNK']._serialized_end=161
   _globals['_RESPONSE']._serialized_start=163
   _globals['_RESPONSE']._serialized_end=209
-  _globals['_FILESERVICE']._serialized_start=211
-  _globals['_FILESERVICE']._serialized_end=335
+  _globals['_FILESERVICE']._serialized_start=387
+  _globals['_FILESERVICE']._serialized_end=511
 # @@protoc_insertion_point(module_scope)
