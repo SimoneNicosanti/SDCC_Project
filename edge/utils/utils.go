@@ -137,11 +137,26 @@ func GetMyIPAddr() (string, error) {
 	return "", fmt.Errorf("no suitable IP address found")
 }
 
-func GenerateRandomID() (string, error) {
-	randomBytes := make([]byte, 16)
-	_, err := crypto_rand.Read(randomBytes)
-	if err != nil {
-		return "", err
+func GenerateUniqueRandomID(existingIDs []string) (string, error) {
+	for {
+		randomBytes := make([]byte, 16)
+		_, err := crypto_rand.Read(randomBytes)
+		if err != nil {
+			return "", err
+		}
+		randomID := base64.URLEncoding.EncodeToString(randomBytes)[:16]
+		if !stringInSlice(randomID, existingIDs) {
+			return randomID, nil
+		}
 	}
-	return base64.URLEncoding.EncodeToString(randomBytes)[:16], nil
+
+}
+
+func stringInSlice(str string, slice []string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

@@ -1,9 +1,10 @@
 import pika
 import pika.channel
+import pika.adapters.blocking_connection
 
 __CHANNEL : pika = None
 
-def getRabbitChannel() -> pika.channel.Channel :
+def getRabbitChannel() -> pika.adapters.blocking_connection.BlockingChannel :
     global __CHANNEL
     if (__CHANNEL == None) :
         connection = pika.BlockingConnection(

@@ -2,64 +2,67 @@ from engineering import RabbitSingleton, Debug
 from engineering.Ticket import Ticket, Method
 from proto.file_transfer.File_pb2 import *
 from proto.file_transfer.File_pb2_grpc import *
+from asyncio import Semaphore
+from pika.adapters.blocking_connection  import BlockingChannel
 from utils import Utils
-import json, grpc, os, pika.channel, pika
+import json, grpc, os
 
 ticket_id_list : list = []
+data = None
+sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
     # Otteniamo l'indirizzo del peer da contattare
     ticket : Ticket = getTicket()
     if ticket == None:
-        return None
+        return False
     ticket_id_list.append(ticket.ticket_id)
 
+    # Preparazione chiamata gRPC
     channel = grpc.insecure_channel(ticket.peer_addr)
     stub = FileServiceStub(channel)
 
-    return execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)
+    # Esecuzione dell'azione
+    result = execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)
 
-def callback(ch, method, properties, body):
-    data = json.load(body)
-    serverEndpoint = data['ServerEndpoint']
-    ticket_id = data['Id']
-    ticket = Ticket(serverEndpoint, ticket_id)
-    print(ticket)
+
+    # Rimuoviamo il ticket dalla lista di ticket_id che stiamo usando
+    ticket_id_list.remove(ticket.ticket_id)
+
+    return result
+
+def callback(ch : BlockingChannel, method, properties, body):
+    global data 
+    if method == None:
+        data = None
+    else:
+        data = json.load(body)
+    
+    ch.stop_consuming()
 
 
 def getTicket() -> Ticket:
 
     queue_name = os.environ.get("QUEUE_NAME")
-    channel : pika.channel.Channel = RabbitSingleton.getRabbitChannel()
-    channel.queue_declare(queue = queue_name, durable=True)
+    channel : BlockingChannel = RabbitSingleton.getRabbitChannel()
+    channel.queue_declare(queue = queue_name, durable = True)
     
-    while True :
-        value = channel.basic_consume(queue_name, on_message_callback = callback, auto_ack=True)
-        print(value)
-    
-#import pika
+    channel.basic_consume(queue = queue_name, on_message_callback = callback, auto_ack = True)
+    # All'interno della callback viene scritto il contenuto del messaggio in 'data'
+    sem.acquire()
+    channel.start_consuming()
+    global data
+    ticket = None
+    if data != None:
+        serverEndpoint = data['ServerEndpoint']
+        ticket_id = data['Id']
+        ticket = Ticket(serverEndpoint, ticket_id)
+        Debug.debug(ticket)
+    # Dopo aver creato il Ticket possiamo rilasciare il semaforo
+    sem.release()
 
-# Set up connection parameters
-#connection_params = pika.ConnectionParameters('localhost')
-#connection = pika.BlockingConnection(connection_params)
-#channel = connection.channel()
-
-# Declare a queue
-#queue_name = 'my_queue'
-#channel.queue_declare(queue=queue_name)
-
-#while True:
-#    method_frame, header_frame, body = channel.basic_get(queue=queue_name)
-#    
-#    if method_frame:
-#        print(f"Received message: {body.decode()}")
-#        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-#    else:
-#        print("No messages in the queue")
-#        break
-#
-#connection.close()
+    return ticket
 
 
 
@@ -77,9 +80,6 @@ def execAction(ticket_id : str, requestType : Method, filename : str, stub : Fil
 
     # Esecuzione dell'azione
     result = action(filename, ticket_id, stub)
-    
-    # Rimuoviamo il ticket dalla lista di ticket_id che stiamo usando
-    ticket_id_list.remove(ticket_id)
     
     return result
 

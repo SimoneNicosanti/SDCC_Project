@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -19,79 +20,103 @@ type Ticket struct {
 	Id             string
 }
 
-func publishTicket(channel *amqp.Channel, queueName string, ticket Ticket) error {
+type AuthorizedTicketIDs struct {
+	mutex sync.RWMutex
+	IDs   []string
+}
+
+var authorizedTicketIDs = AuthorizedTicketIDs{
+	mutex: sync.RWMutex{},
+	IDs:   make([]string, utils.GetIntegerEnvironmentVariable("EDGE_TICKETS_NUM")),
+}
+
+var serverEndpoint string
+
+func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	encoded, err := json.Marshal(ticket)
 	if err != nil {
-		log.Println("[*ERROR*] - Error in marshaling Ticket for RabbitMQ")
+		log.Println("[*ERROR*] -> Error in marshaling Ticket for RabbitMQ")
 		return err
 	}
-	err = channel.PublishWithContext(ctx, "", queueName, false, false, amqp.Publishing{
+	err = channel.PublishWithContext(ctx, "", utils.GetEnvironmentVariable("QUEUE_NAME"), false, false, amqp.Publishing{
 		ContentType: "text/plain",
 		Body:        encoded,
 	})
 	if err != nil {
-		log.Println("[*ERROR*] - Error in publishing ticket on RabbitMQ")
+		log.Println("[*ERROR*] -> Error in publishing ticket on RabbitMQ")
 		return err
 	}
 	return nil
 }
 
-func setupRabbitMQ(queueName string) (*amqp.Connection, *amqp.Channel, error) {
-	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
-	if err != nil {
-		log.Printf("[*ERROR*] - Impossibile contattare il server RabbitMQ\r\n")
-		return nil, nil, err
-	}
+func publishTicket(channel *amqp.Channel, oldTicketIndex int) error {
+	count := 0
+	ticket := createTicket(oldTicketIndex)
+	for count < 3 {
+		err := attemptPublishTicket(channel, ticket)
 
-	channel, err := conn.Channel()
-	if err != nil {
-		log.Printf("[*ERROR*] - Impossibile aprire il canale verso la coda\r\n")
-		return nil, nil, err
+		// La funzione ritorna al primo tentativo con successo
+		if err == nil {
+			return nil
+		}
+		count++
+		log.Println(err.Error())
 	}
-
-	_, err = channel.QueueDeclare(queueName, true, false, false, false, nil)
-	if err != nil {
-		log.Printf("[*ERROR*] - Impossibile dichiarare la coda\r\n")
-		return nil, nil, err
-	}
-
-	return conn, channel, nil
+	// Dopo tre tentativi falliti verrà generato un errore
+	return fmt.Errorf("[*ERROR*] -> All the attempts to publish ticket '%s' failed", ticket.Id)
 }
 
-var rabbitChannel *amqp.Channel
+func createTicket(oldTicketIndex int) Ticket {
+	randomID, err := utils.GenerateUniqueRandomID(authorizedTicketIDs.IDs)
+	utils.ExitOnError("[*ERROR*] -> Error generating random ID for ticket", err)
+	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
+	ticket := Ticket{serverEndpoint, randomID}
+	log.Printf("[*TICKET GENERATED*] -> randomID : '%s'", randomID)
+	return ticket
+}
+
+func setupRabbitMQ() *amqp.Channel {
+	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
+	utils.ExitOnError("[*ERROR*] -> Impossibile contattare il server RabbitMQ\r\n", err)
+
+	channel, err := conn.Channel()
+	utils.ExitOnError("[*ERROR*] -> Impossibile aprire il canale verso la coda\r\n", err)
+
+	_, err = channel.QueueDeclare(utils.GetEnvironmentVariable("QUEUE_NAME"), true, false, false, false, nil)
+	utils.ExitOnError("[*ERROR*] -> Impossibile dichiarare la coda\r\n", err)
+
+	return channel
+}
+
+func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
+
+	for i := 0; i < len(authorizedTicketIDs.IDs); i++ {
+		err := publishTicket(rabbitChannel, i)
+		utils.ExitOnError("[*ERROR*] -> Impossibile pubblicare ticket sulla coda\r\n", err)
+	}
+}
 
 func ActAsServer() {
-	serverEndpoint := setUpGRPC()
-	queueName := utils.GetEnvironmentVariable("QUEUE_NAME")
-	_, ch, err := setupRabbitMQ("storage_queue")
-	rabbitChannel = ch
-	utils.ExitOnError("[*ERROR*] - Errore sul setup della coda rabbit", err)
-	//defer conn.Close()
-	//defer ch.Close()
-	for i := 0; i < utils.GetIntegerEnvironmentVariable("EDGE_TOKENS"); i++ {
-		randomID, err := utils.GenerateRandomID()
-		utils.ExitOnError("[*ERROR*] - Error generating random ID", err)
-		err = publishTicket(rabbitChannel, queueName, Ticket{serverEndpoint, randomID})
-	}
-	utils.ExitOnError("[*ERROR*] - Impossibile pubblicare messaggio sulla coda\r\n", err)
+	setUpGRPC()
+
+	rabbitChannel := setupRabbitMQ()
+
+	publishAllTicketsOnQueue(rabbitChannel)
 
 	var forever chan struct{}
-
-	log.Printf("[*] Waiting for messages. To exit press CTRL+C\r\n")
 	<-forever
 }
 
-func setUpGRPC() string {
+func setUpGRPC() {
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError(err.Error(), err)
-	serverEndpoint := fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
+	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
+	serverEndpoint = fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
 	lis, err := net.Listen("tcp", serverEndpoint)
-	utils.ExitOnError("[*ERROR*] - failed to listen", err)
+	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 	grpcServer := grpc.NewServer()
 	proto.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	log.Printf("[*] Waiting for requests on %s...", serverEndpoint)
+	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
 	go grpcServer.Serve(lis)
-	return serverEndpoint
 }

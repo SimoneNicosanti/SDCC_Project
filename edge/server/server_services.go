@@ -5,6 +5,7 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
@@ -18,6 +19,8 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 	if err != nil {
 		return fmt.Errorf("[*ERROR*] - Failed while receiving chunks from clientstream via gRPC\n%s", err.Error())
 	}
+
+	checkTicket(message.TicketId)
 
 	localFile, err := os.Create("/files/" + message.FileName)
 	if err != nil {
@@ -40,25 +43,22 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 		}
 	}
 
+	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
 	response := proto.Response{TicketId: message.TicketId, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
 		return fmt.Errorf("[*ERROR*] - Couldn't close clientstream\r\n%s", err.Error())
 	}
-	// if response.TicketId != message.TicketId {
-	// 	log.Printf("[*ERROR*] - TicketId '%d' non riconosciuto! Expected --> '%d' \r\n", response.TicketId, message.TicketId)
-	// } else if !response.Success {
-	// 	log.Printf("[*ERROR*] - nello scaricamento del File '%s' [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
-	// } else {
-	// 	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %d]\r\n", message.FileName, message.TicketId)
-	// }
 
-	//TODO Add token release on rabbitMQ Queue
+	generateNewTicket()
+
+	//TODO Add ticket release on rabbitMQ Queue
 
 	return nil
 }
 
 func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, downloadStream proto.FileService_DownloadServer) error {
+	checkTicket(requestMessage.TicketId)
 	localFile, err := os.Open("/files/" + requestMessage.FileName)
 	if err != nil {
 		return fmt.Errorf("[*ERROR*] - File open failed\n%s", err.Error())
@@ -77,12 +77,21 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 		downloadStream.Send(&proto.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
 	}
 
-	//TODO Add token release on rabbitMQ Queue
-	// estraiDaCoda
-	// download
-	// edge --> download (rilascio nuovo token)
-	// --- cade client
-	// NO ack
-	//possibile soluzione --> random_request_id
+	generateNewTicket()
+	//TODO Add ticket release on rabbitMQ Queue
 	return nil
+}
+
+func checkTicket(requestId string) bool {
+	for _, authRequestId := range authorizedTicketIDs.IDs {
+		if requestId == authRequestId {
+			return true
+		}
+	}
+	return false
+}
+
+func generateNewTicket() {
+	randomID, err := utils.GenerateUniqueRandomID()
+	if ()
 }
