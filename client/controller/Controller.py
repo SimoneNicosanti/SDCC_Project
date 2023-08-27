@@ -52,8 +52,8 @@ def getTicket() -> Ticket:
     
     channel.basic_consume(queue = queue_name, on_message_callback = callback, auto_ack = True)
     # All'interno della callback viene scritto il contenuto del messaggio in 'data'
-    global sem
-    sem.acquire()
+    # global sem
+    # sem.acquire()
     channel.start_consuming()
     global data
     ticket = None
@@ -63,11 +63,9 @@ def getTicket() -> Ticket:
         ticket = Ticket(serverEndpoint, ticket_id)
         Debug.debug(f"Acquired ticket '{ticket_id}' on connection {ticket.peer_addr}'")
     # Dopo aver creato il Ticket possiamo rilasciare il semaforo
-    sem.release()
+    # sem.release()
 
     return ticket
-
-
 
 def execAction(ticket_id : str, requestType : Method, filename : str, stub : FileServiceStub) -> bool:
 
@@ -105,9 +103,8 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         print(e.code())
         print(e.code().value)
         print(e.details())
+
         raise e
-
-
 
 
 def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
@@ -124,7 +121,6 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     
     return response.success
 
-
 def deleteFile(fileName : str) -> bool:
     #TODO
     pass
@@ -132,7 +128,6 @@ def deleteFile(fileName : str) -> bool:
 def login(username : str, passwd : str, email : str) -> bool :
     if username == "sae" and passwd == "admin" and email == "admin@sae.com":
         return True
-
 
 class FileService:
     global ticket_id_list

@@ -58,6 +58,7 @@ func addConnection(edgePeer EdgePeer, conn *rpc.Client) {
 
 // Comunica ai tuoi vicini di aggiungerti come loro vicino
 func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
+
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 

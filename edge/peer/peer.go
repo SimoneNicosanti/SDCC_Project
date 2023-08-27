@@ -105,7 +105,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 		return "Errore registrazione del servizio", err
 	}
 
-	rpc.HandleHTTP()
+	//rpc.HandleHTTP()
 	bindIpAddr := ipAddrStr + ":0"
 
 	peerListener, err := net.Listen("tcp", bindIpAddr)
@@ -114,18 +114,29 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 	}
 	edgePeerPtr.PeerAddr = peerListener.Addr().String()
 
-	//Thread che ascolta eventuali richieste arrivate
-	go listenLoop(peerListener)
+	// Thread che ascolta eventuali richieste arrivate
+	//go http.Serve(peerListener, nil)
+	go func() {
+		connectionChannel := make(chan int, utils.GetIntegerEnvironmentVariable("MAX_PEER_REQUESTS"))
+		for {
+			conn, err := peerListener.Accept()
+			connectionChannel <- 0
+			go func() {
+				defer func() {
+					_, _ := <-connectionChannel
+				}
+				go rpc.ServeConn(conn)
+			}
+		}
+	}
 
 	selfPeer = EdgePeer{edgePeerPtr.PeerAddr}
 
 	return "", err
 }
 
-func listenLoop(listener net.Listener) {
-	for {
-		http.Serve(listener, nil)
-	}
+func createHandler() {
+
 }
 
 func temporizedNotifyBloomFilters() {

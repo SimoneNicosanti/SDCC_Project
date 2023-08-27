@@ -57,8 +57,6 @@ func (s *FileServiceServer) Upload(uploadStream proto.FileService_UploadServer) 
 		return status.Error(codes.Code(proto.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Couldn't close clientstream")
 	}
 
-	//TODO Add ticket release on rabbitMQ Queue
-
 	return nil
 }
 
@@ -68,12 +66,32 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 		return status.Error(codes.Code(proto.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
 	}
 	defer publishNewTicket(isValidRequest)
-	localFile, err := os.Open("/files/" + requestMessage.FileName)
+	//TODO lancio N thread (N = #vicini) e aspetto solo risposta affermativa --> altrimenti timeout e contatto S3 --> OK->SEND_FILE/FILE_NOT_FOUND_ERROR
+	// per limitare il numero di thread lanciati lo richiedo in modulo alla threshold (chiedo ai primi k, poi ai secondi k, etc etc...)
+	// Se sono presenti vicini con un riscontro positivo sul loro filtro di bloom, considereremo loro nei primi k da contattare (eventualmente
+	// aggiungiamo altri casualmente se non arriviamo a k)
+	// imposto un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
+	// imposto un TTL per il numero di hop della richiesta (faccio una ricerca relativamente locale)
+	_, err := os.Stat("/files/" + requestMessage.FileName)
+	if os.IsNotExist(err) { //Non c'è nella mia memoria
+		//TODO peer.go alla fine c'è gestione filtri di bloom (guarda primitiva)
+		//TODO accedere alla struct dei neighbours
+		return
+	} else if err == nil { //L'ho trovato in memoria --> posso mandarlo direttamente io
+		// dimensione del chunk
+		return sendLocalFileStream("/files/"+requestMessage.FileName, requestMessage, downloadStream)
+	} else { //Got an error
+		return err
+	}
+}
+
+func sendLocalFileStream(nameOfFile string, requestMessage *proto.FileDownloadRequest, downloadStream proto.FileService_DownloadServer) error {
+	localFile, err := os.Open(nameOfFile)
 	if err != nil {
 		return status.Error(codes.Code(proto.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
 	}
 	defer localFile.Close()
-	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE") // dimensione del chunk
+	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := localFile.Read(buffer)
@@ -85,9 +103,6 @@ func (s *FileServiceServer) Download(requestMessage *proto.FileDownloadRequest, 
 		}
 		downloadStream.Send(&proto.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
 	}
-
-	publishNewTicket(isValidRequest)
-	//TODO Add ticket release on rabbitMQ Queue
 	return nil
 }
 

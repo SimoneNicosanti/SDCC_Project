@@ -5,6 +5,7 @@ import (
 	"registry/utils"
 )
 
+// TODO Aggiungere limite al numero di vicini che ogni nodo può avere
 func main() {
 
 	utils.SetupEnvVariables("conf.properties")
