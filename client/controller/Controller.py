@@ -1,7 +1,7 @@
 from engineering import RabbitSingleton, Debug, MyErrors
 from engineering.Ticket import Ticket, Method
-from proto.file_transfer.File_pb2 import *
-from proto.file_transfer.File_pb2_grpc import *
+from proto.file_transfer.ClientFileTransfer_pb2 import *
+from proto.file_transfer.ClientFileTransfer_pb2_grpc import *
 from grpc import StatusCode
 from asyncio import Semaphore
 from pika.adapters.blocking_connection  import BlockingChannel

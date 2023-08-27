@@ -2,7 +2,9 @@ package peer
 
 import (
 	"edge/utils"
+	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -83,13 +85,9 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 
 func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, string, error) {
 	registryAddr := "registry:1234"
-	client, err := rpc.DialHTTP("tcp", registryAddr)
-	if err != nil {
-		return nil, "Errore Dial HTTP", err
-	}
 
-	client, errorMessage, err := connectToNode("registry:1234")
-	utils.ExitOnError(errorMessage, err)
+	client, err := ConnectToNode(registryAddr)
+	utils.ExitOnError("", err)
 
 	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, adj)
 	if err != nil {
@@ -105,7 +103,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 		return "Errore registrazione del servizio", err
 	}
 
-	//rpc.HandleHTTP()
+	rpc.HandleHTTP()
 	bindIpAddr := ipAddrStr + ":0"
 
 	peerListener, err := net.Listen("tcp", bindIpAddr)
@@ -115,20 +113,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 	edgePeerPtr.PeerAddr = peerListener.Addr().String()
 
 	// Thread che ascolta eventuali richieste arrivate
-	//go http.Serve(peerListener, nil)
-	go func() {
-		connectionChannel := make(chan int, utils.GetIntegerEnvironmentVariable("MAX_PEER_REQUESTS"))
-		for {
-			conn, err := peerListener.Accept()
-			connectionChannel <- 0
-			go func() {
-				defer func() {
-					_, _ := <-connectionChannel
-				}
-				go rpc.ServeConn(conn)
-			}
-		}
-	}
+	go http.Serve(peerListener, nil)
 
 	selfPeer = EdgePeer{edgePeerPtr.PeerAddr}
 
@@ -177,27 +162,64 @@ func counterNotifyBloomFilters() {
 	selfBloomFilter.mutex.RUnlock()
 }
 
-func lookupForFile(fileName string) {
-	adjacentsMap.connsMutex.Lock()
-	adjacentsMap.filtersMutex.Lock()
+func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, error) {
+	adjacentsMap.connsMutex.RLock()
+	adjacentsMap.filtersMutex.RLock()
 
-	founded := false
-	for adj, adjConn := range adjacentsMap.peerConns {
-		if adjacentsMap.filterMap[adj].Test([]byte(fileName)) {
-			founded = true
-			err := adjConn.Call("EdgePeer.FileLookup", fileName, new(int))
-			if err != nil {
-				log.Println("Errore chiamata Edge " + adj.PeerAddr + " per la ricerca del file")
+	defer adjacentsMap.filtersMutex.RUnlock()
+	defer adjacentsMap.connsMutex.RUnlock()
+
+	doneChannel := make(chan *rpc.Call)
+	maxContactable := utils.GetIntegerEnvironmentVariable("MAX_CONTACTABLE_ADJ")
+	contactedNum := 0
+	for adj := range adjacentsMap.peerConns {
+		if adjacentsMap.filterMap[adj].Test([]byte(fileRequestMessage.FileName)) {
+			contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+			contactedNum++
+			if contactedNum == maxContactable {
+				break
 			}
 		}
 	}
-	if !founded {
-		// TODO Scegli a caso alcuni vicini e mandagli la richiesta??
-		// Ogni nodo manca anche un filtro che aggrega i suoi vicini??
-		// Vado diretto su S3??
-		// Uso una soglia per stabilire se inoltrare o andare su S3??
+
+	if contactedNum < maxContactable {
+		falseFiltersNeighbours := findFalseAdjacentsFilter(fileRequestMessage.FileName)
+		for i := 0; i < len(falseFiltersNeighbours); i++ {
+			randomInt := rand.Intn(len(falseFiltersNeighbours))
+			randomNeigh := falseFiltersNeighbours[randomInt]
+			contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
+			contactedNum++
+			if contactedNum == maxContactable {
+				break
+			}
+			falseFiltersNeighbours = append(falseFiltersNeighbours[0:randomInt], falseFiltersNeighbours[randomInt+1:]...)
+		}
 	}
 
-	defer adjacentsMap.filtersMutex.Unlock()
-	defer adjacentsMap.connsMutex.Unlock()
+	for i := 0; i < contactedNum; i++ {
+		neighbourCall := <-doneChannel
+		err := neighbourCall.Error
+		if err == nil {
+			return neighbourCall.Reply.(EdgePeer), nil
+		}
+	}
+
+	return EdgePeer{}, fmt.Errorf("[*ERROR*] No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+
+}
+
+func findFalseAdjacentsFilter(fileName string) []EdgePeer {
+	falseAdjacentsList := make([]EdgePeer, 0)
+	for adj, adjFilter := range adjacentsMap.filterMap {
+		if !adjFilter.Test([]byte(fileName)) {
+			falseAdjacentsList = append(falseAdjacentsList, adj)
+		}
+	}
+	return falseAdjacentsList
+}
+
+func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer, doneChannel chan *rpc.Call) {
+	ownerPeerPtr := new(EdgePeer)
+	adjConn := adjacentsMap.peerConns[adj]
+	adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, ownerPeerPtr, doneChannel)
 }

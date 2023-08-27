@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"edge/proto"
+	"edge/proto/client"
 	"edge/utils"
 	"encoding/json"
 	"fmt"
@@ -112,7 +112,7 @@ func setUpGRPC() {
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 	grpcServer := grpc.NewServer()
-	proto.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
+	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
 	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
 	go grpcServer.Serve(lis)
 }

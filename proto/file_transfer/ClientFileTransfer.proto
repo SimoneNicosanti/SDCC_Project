@@ -1,7 +1,7 @@
 syntax = "proto3";
 package client;
 
-option go_package = "../proto";
+option go_package = "../proto/client";
 
 service FileService {
     rpc Download(FileDownloadRequest) returns (stream FileChunk);

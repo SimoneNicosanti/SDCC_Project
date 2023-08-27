@@ -1,0 +1,27 @@
+syntax = "proto3";
+package edge;
+
+option go_package = "../proto/edge";
+
+enum ErrorCodes {
+    OK = 0;
+    CHUNK_ERROR = 10;
+    INVALID_TICKET = 11;
+    FILE_CREATE_ERROR = 12 ;
+    FILE_NOT_FOUND_ERROR = 13;
+    FILE_WRITE_ERROR = 15;
+    FILE_READ_ERROR = 16;
+    STREAM_CLOSE_ERROR = 17;
+}
+
+service EdgeFileService {
+    rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
+}
+
+message EdgeFileDownloadRequest {
+    string file_name = 1;
+}
+
+message EdgeFileChunk {
+    bytes chunk = 1;
+}

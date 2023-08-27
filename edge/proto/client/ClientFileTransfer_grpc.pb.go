@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.24.0
-// source: File.proto
+// source: ClientFileTransfer.proto
 
-package proto
+package client
 
 import (
 	context "context"
@@ -203,5 +203,5 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "File.proto",
+	Metadata: "ClientFileTransfer.proto",
 }

@@ -3,6 +3,7 @@ package peer
 import (
 	"edge/utils"
 	"errors"
+	"fmt"
 	"net/rpc"
 	"sync"
 
@@ -30,6 +31,11 @@ type HeartbeatMessage struct {
 type BloomFilterMessage struct {
 	EdgePeer    EdgePeer
 	BloomFilter *bloom.CountingBloomFilter
+}
+
+type FileRequestMessage struct {
+	FileName string
+	TTL      int
 }
 
 var adjacentsMap = AdjacentPeers{
@@ -70,10 +76,10 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 	return nil
 }
 
-func connectToNode(addr string) (*rpc.Client, string, error) {
+func ConnectToNode(addr string) (*rpc.Client, error) {
 	client, err := rpc.DialHTTP("tcp", addr)
 	if err != nil {
-		return nil, "Errore Dial HTTP", err
+		return nil, fmt.Errorf("Errore Dial HTTP")
 	}
-	return client, "", err
+	return client, nil
 }
