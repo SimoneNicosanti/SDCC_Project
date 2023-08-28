@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	FileService_Download_FullMethodName = "/client.FileService/Download"
-	FileService_Upload_FullMethodName   = "/client.FileService/Upload"
+	FileService_Download_FullMethodName         = "/client.FileService/Download"
+	FileService_DownloadFromEdge_FullMethodName = "/client.FileService/DownloadFromEdge"
+	FileService_Upload_FullMethodName           = "/client.FileService/Upload"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -28,6 +29,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FileServiceClient interface {
 	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadClient, error)
+	DownloadFromEdge(ctx context.Context, in *EdgeFileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadFromEdgeClient, error)
 	Upload(ctx context.Context, opts ...grpc.CallOption) (FileService_UploadClient, error)
 }
 
@@ -71,8 +73,40 @@ func (x *fileServiceDownloadClient) Recv() (*FileChunk, error) {
 	return m, nil
 }
 
+func (c *fileServiceClient) DownloadFromEdge(ctx context.Context, in *EdgeFileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadFromEdgeClient, error) {
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[1], FileService_DownloadFromEdge_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &fileServiceDownloadFromEdgeClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type FileService_DownloadFromEdgeClient interface {
+	Recv() (*EdgeFileChunk, error)
+	grpc.ClientStream
+}
+
+type fileServiceDownloadFromEdgeClient struct {
+	grpc.ClientStream
+}
+
+func (x *fileServiceDownloadFromEdgeClient) Recv() (*EdgeFileChunk, error) {
+	m := new(EdgeFileChunk)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *fileServiceClient) Upload(ctx context.Context, opts ...grpc.CallOption) (FileService_UploadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[1], FileService_Upload_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &FileService_ServiceDesc.Streams[2], FileService_Upload_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +144,7 @@ func (x *fileServiceUploadClient) CloseAndRecv() (*Response, error) {
 // for forward compatibility
 type FileServiceServer interface {
 	Download(*FileDownloadRequest, FileService_DownloadServer) error
+	DownloadFromEdge(*EdgeFileDownloadRequest, FileService_DownloadFromEdgeServer) error
 	Upload(FileService_UploadServer) error
 	mustEmbedUnimplementedFileServiceServer()
 }
@@ -120,6 +155,9 @@ type UnimplementedFileServiceServer struct {
 
 func (UnimplementedFileServiceServer) Download(*FileDownloadRequest, FileService_DownloadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Download not implemented")
+}
+func (UnimplementedFileServiceServer) DownloadFromEdge(*EdgeFileDownloadRequest, FileService_DownloadFromEdgeServer) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadFromEdge not implemented")
 }
 func (UnimplementedFileServiceServer) Upload(FileService_UploadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Upload not implemented")
@@ -155,6 +193,27 @@ type fileServiceDownloadServer struct {
 }
 
 func (x *fileServiceDownloadServer) Send(m *FileChunk) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _FileService_DownloadFromEdge_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(EdgeFileDownloadRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(FileServiceServer).DownloadFromEdge(m, &fileServiceDownloadFromEdgeServer{stream})
+}
+
+type FileService_DownloadFromEdgeServer interface {
+	Send(*EdgeFileChunk) error
+	grpc.ServerStream
+}
+
+type fileServiceDownloadFromEdgeServer struct {
+	grpc.ServerStream
+}
+
+func (x *fileServiceDownloadFromEdgeServer) Send(m *EdgeFileChunk) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -195,6 +254,11 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Download",
 			Handler:       _FileService_Download_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "DownloadFromEdge",
+			Handler:       _FileService_DownloadFromEdge_Handler,
 			ServerStreams: true,
 		},
 		{

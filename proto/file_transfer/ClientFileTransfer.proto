@@ -5,6 +5,7 @@ option go_package = "../proto/client";
 
 service FileService {
     rpc Download(FileDownloadRequest) returns (stream FileChunk);
+    //rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
     rpc Upload(stream FileChunk) returns (Response);
     // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
 }
@@ -35,3 +36,11 @@ message Response {
     string ticket_id = 1;
     bool success = 2;
 }
+
+// message EdgeFileDownloadRequest {
+//     string file_name = 1;
+// }
+
+// message EdgeFileChunk {
+//     bytes chunk = 1;
+// }

@@ -3,6 +3,11 @@ class FileNotFoundException(Exception):
         self.message = message
         super().__init__(self.message)
 
+class FailedToOpenException(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(self.message)
+
 class InvalidTicketException(Exception):
     def __init__(self, message):
         self.message = message

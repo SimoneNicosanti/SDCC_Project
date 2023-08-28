@@ -45,7 +45,7 @@ func heartbeatToRegistry() {
 		}
 		returnMap := map[EdgePeer]byte{}
 		if registryClient == nil {
-			newRegistryConnection, _, err := connectToNode("registry:1234")
+			newRegistryConnection, err := ConnectToNode("registry:1234")
 			if err != nil {
 				log.Println("Impossibile stabilire connessione con il Registry")
 				continue
@@ -75,7 +75,7 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 		// - Manca qualcuno --> Lo aggiungo tra le connessioni
 		_, isInMap := registryAdjPeerList[registryAdjPeer]
 		if !isInMap {
-			client, _, err := connectToNode(registryAdjPeer.PeerAddr)
+			client, err := ConnectToNode(registryAdjPeer.PeerAddr)
 			if err != nil {
 				log.Println("Errore connessione " + registryAdjPeer.PeerAddr)
 			} else {
@@ -95,12 +95,12 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 }
 
 func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
-	client, errorMessage, err := connectToNode(peer.PeerAddr)
+	client, err := ConnectToNode(peer.PeerAddr)
 	//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 	// il peer corrente lo ignorerà.
 	if err != nil {
-		log.Println(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
-		return nil, errors.New(errorMessage + "Impossibile stabilire la connessione con " + peer.PeerAddr)
+		log.Println("Impossibile stabilire la connessione con " + peer.PeerAddr)
+		return nil, errors.New("Impossibile stabilire la connessione con " + peer.PeerAddr)
 	}
 
 	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni

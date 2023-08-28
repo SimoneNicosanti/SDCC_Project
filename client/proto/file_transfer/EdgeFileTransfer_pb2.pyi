@@ -24,32 +24,6 @@ FILE_WRITE_ERROR: ErrorCodes
 FILE_READ_ERROR: ErrorCodes
 STREAM_CLOSE_ERROR: ErrorCodes
 
-class FileDownloadRequest(_message.Message):
-    __slots__ = ["ticket_id", "file_name"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
-    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
-    file_name: str
-    def __init__(self, ticket_id: _Optional[str] = ..., file_name: _Optional[str] = ...) -> None: ...
-
-class FileChunk(_message.Message):
-    __slots__ = ["ticket_id", "file_name", "chunk"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
-    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
-    CHUNK_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
-    file_name: str
-    chunk: bytes
-    def __init__(self, ticket_id: _Optional[str] = ..., file_name: _Optional[str] = ..., chunk: _Optional[bytes] = ...) -> None: ...
-
-class Response(_message.Message):
-    __slots__ = ["ticket_id", "success"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
-    SUCCESS_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
-    success: bool
-    def __init__(self, ticket_id: _Optional[str] = ..., success: bool = ...) -> None: ...
-
 class EdgeFileDownloadRequest(_message.Message):
     __slots__ = ["file_name"]
     FILE_NAME_FIELD_NUMBER: _ClassVar[int]

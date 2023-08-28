@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&file_transfer/ClientFileTransfer.proto\x12\x06\x63lient\";\n\x13\x46ileDownloadRequest\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\"@\n\tFileChunk\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\x12\r\n\x05\x63hunk\x18\x03 \x01(\x0c\".\n\x08Response\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08*\xad\x01\n\nErrorCodes\x12\x06\n\x02OK\x10\x00\x12\x0f\n\x0b\x43HUNK_ERROR\x10\n\x12\x12\n\x0eINVALID_TICKET\x10\x0b\x12\x15\n\x11\x46ILE_CREATE_ERROR\x10\x0c\x12\x18\n\x14\x46ILE_NOT_FOUND_ERROR\x10\r\x12\x14\n\x10\x46ILE_WRITE_ERROR\x10\x0f\x12\x13\n\x0f\x46ILE_READ_ERROR\x10\x10\x12\x16\n\x12STREAM_CLOSE_ERROR\x10\x11\x32|\n\x0b\x46ileService\x12<\n\x08\x44ownload\x12\x1b.client.FileDownloadRequest\x1a\x11.client.FileChunk0\x01\x12/\n\x06Upload\x12\x11.client.FileChunk\x1a\x10.client.Response(\x01\x42\x11Z\x0f../proto/clientb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&file_transfer/ClientFileTransfer.proto\x12\x06\x63lient\";\n\x13\x46ileDownloadRequest\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\"@\n\tFileChunk\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x11\n\tfile_name\x18\x02 \x01(\t\x12\r\n\x05\x63hunk\x18\x03 \x01(\x0c\".\n\x08Response\x12\x11\n\tticket_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\",\n\x17\x45\x64geFileDownloadRequest\x12\x11\n\tfile_name\x18\x01 \x01(\t\"\x1e\n\rEdgeFileChunk\x12\r\n\x05\x63hunk\x18\x01 \x01(\x0c*\xad\x01\n\nErrorCodes\x12\x06\n\x02OK\x10\x00\x12\x0f\n\x0b\x43HUNK_ERROR\x10\n\x12\x12\n\x0eINVALID_TICKET\x10\x0b\x12\x15\n\x11\x46ILE_CREATE_ERROR\x10\x0c\x12\x18\n\x14\x46ILE_NOT_FOUND_ERROR\x10\r\x12\x14\n\x10\x46ILE_WRITE_ERROR\x10\x0f\x12\x13\n\x0f\x46ILE_READ_ERROR\x10\x10\x12\x16\n\x12STREAM_CLOSE_ERROR\x10\x11\x32\xca\x01\n\x0b\x46ileService\x12<\n\x08\x44ownload\x12\x1b.client.FileDownloadRequest\x1a\x11.client.FileChunk0\x01\x12L\n\x10\x44ownloadFromEdge\x12\x1f.client.EdgeFileDownloadRequest\x1a\x15.client.EdgeFileChunk0\x01\x12/\n\x06Upload\x12\x11.client.FileChunk\x1a\x10.client.Response(\x01\x42\x11Z\x0f../proto/clientb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,14 +22,18 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'Z\017../proto/client'
-  _globals['_ERRORCODES']._serialized_start=226
-  _globals['_ERRORCODES']._serialized_end=399
+  _globals['_ERRORCODES']._serialized_start=304
+  _globals['_ERRORCODES']._serialized_end=477
   _globals['_FILEDOWNLOADREQUEST']._serialized_start=50
   _globals['_FILEDOWNLOADREQUEST']._serialized_end=109
   _globals['_FILECHUNK']._serialized_start=111
   _globals['_FILECHUNK']._serialized_end=175
   _globals['_RESPONSE']._serialized_start=177
   _globals['_RESPONSE']._serialized_end=223
-  _globals['_FILESERVICE']._serialized_start=401
-  _globals['_FILESERVICE']._serialized_end=525
+  _globals['_EDGEFILEDOWNLOADREQUEST']._serialized_start=225
+  _globals['_EDGEFILEDOWNLOADREQUEST']._serialized_end=269
+  _globals['_EDGEFILECHUNK']._serialized_start=271
+  _globals['_EDGEFILECHUNK']._serialized_end=301
+  _globals['_FILESERVICE']._serialized_start=480
+  _globals['_FILESERVICE']._serialized_end=682
 # @@protoc_insertion_point(module_scope)

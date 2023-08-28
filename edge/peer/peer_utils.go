@@ -45,15 +45,19 @@ var adjacentsMap = AdjacentPeers{
 	map[EdgePeer]*bloom.CountingBloomFilter{},
 }
 
-var selfBloomFilter = SelfBloomFilter{
-	sync.RWMutex{},
-	0,
-	bloom.NewCountingBloomFilter(
-		utils.GetUintEnvironmentVariable("FILTER_N"),
-		utils.GetUint8EnvironmentVariable("BUCKET_NUMBER"),
-		utils.GetFloatEnvironmentVariable("FALSE_POSITIVE_RATE"),
-	),
-} // TODO Impostare parametri del filtro
+var selfBloomFilter SelfBloomFilter
+
+func setupBloomFilterStruct() {
+	selfBloomFilter = SelfBloomFilter{
+		sync.RWMutex{},
+		0,
+		bloom.NewCountingBloomFilter(
+			utils.GetUintEnvironmentVariable("FILTER_N"),
+			utils.GetUint8EnvironmentVariable("BUCKET_NUMBER"),
+			utils.GetFloatEnvironmentVariable("FALSE_POSITIVE_RATE"),
+		),
+	} // TODO Impostare parametri del filtro
+}
 
 // Aggiunge una connessione verso un nuovo vicino
 func addConnection(edgePeer EdgePeer, conn *rpc.Client) {

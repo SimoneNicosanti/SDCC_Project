@@ -48,7 +48,7 @@ def getTicket() -> Ticket:
 
     queue_name = os.environ.get("QUEUE_NAME")
     channel : BlockingChannel = RabbitSingleton.getRabbitChannel()
-    channel.queue_declare(queue = queue_name, durable = True)
+    
     
     channel.basic_consume(queue = queue_name, on_message_callback = callback, auto_ack = True)
     # All'interno della callback viene scritto il contenuto del messaggio in 'data'
@@ -85,11 +85,11 @@ def execAction(ticket_id : str, requestType : Method, filename : str, stub : Fil
     return result
 
 def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
-    # Otteniamo i chunks dalla chiamata gRPC
     try:
+        # Otteniamo i chunks dalla chiamata gRPC
         chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
         # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
-        return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks), None
+        return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks)
     except grpc.RpcError as e:
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato")
@@ -99,20 +99,34 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta")
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
-        
         print(e.code())
         print(e.code().value)
         print(e.details())
-
         raise e
 
 
 def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
-    # Dividiamo il file in chunks
-    chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
-
-    # Effettuiamo la chiamata gRPC 
-    response : Response = stub.Upload(chunks)
+    response : Response
+    
+    try:
+        # Dividiamo il file in chunks
+        chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
+        # Effettuiamo la chiamata gRPC 
+        response = stub.Upload(chunks)
+    except grpc.RpcError as e:
+        if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
+            raise MyErrors.FileNotFoundException("File richiesto non trovato")
+        if e.code().value[0] == ErrorCodes.INVALID_TICKET:
+            raise MyErrors.InvalidTicketException("Ticket usato non valido")
+        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
+            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta")
+        if e.code() == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
+        raise e
+    
 
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
     if response.ticket_id != ticket_id:
@@ -135,19 +149,21 @@ class FileService:
     def getChunks(self, ticket_id : str, filename : str):
         #Security check
         if ticket_id not in ticket_id_list:
-            Debug.debug(f"Security check failed --> {ticket_id} is not in the opened ticket list")
-            return
+            raise MyErrors.InvalidTicketException(f"Security check failed --> {ticket_id} is not in the opened ticket list")
 
         try:
             with open("/files/" + filename, "rb") as file :
-                chunkSize = int(Utils.readProperties("conf.properties", "CHUNK_SIZE"))
-                chunk = file.read(chunkSize)
-                while chunk:
-                    fileChunk : FileChunk = FileChunk(ticket_id = ticket_id, file_name = filename, chunk = chunk)
-                    yield fileChunk
-                    chunk = file.read(chunkSize)
+                return self.readFile(file, ticket_id, filename)
         except IOError as e:
-            Debug.debug(f"Couldn't open the file: {str(e)}")
+            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
+
+    def readFile(self, file, ticket_id : str, filename : str):
+        chunkSize = int(os.environ.get("CHUNK_SIZE"))
+        chunk = file.read(chunkSize)
+        while chunk:
+            fileChunk : FileChunk = FileChunk(ticket_id = ticket_id, file_name = filename, chunk = chunk)
+            yield fileChunk
+            chunk = file.read(chunkSize)
 
     def writeChunks(self, ticket_id : str, chunks):
         return self.downloadFile(ticket_id, chunks)
@@ -155,13 +171,12 @@ class FileService:
     def downloadFile(self, ticket_id : str, chunk_list) -> bool:
         chunk : FileChunk = next(chunk_list)
         filename = chunk.file_name
-        
         try:
             with open("/files/" + filename, "wb") as file:
                 file.write(chunk.chunk)
                 for chunk in chunk_list:
                     file.write(chunk.chunk)
         except IOError as e:
-            raise MyErrors.FailedToOpenError()
+            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
 
         return True

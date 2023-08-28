@@ -33,7 +33,9 @@ func ActAsPeer() {
 	// bloomFilter := boom.NewDefaultStableBloomFilter(10000, 0.01)
 	// fmt.Println(bloomFilter)
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError(err.Error(), err)
+	utils.ExitOnError("", err)
+
+	setupBloomFilterStruct()
 
 	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
