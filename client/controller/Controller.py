@@ -5,7 +5,7 @@ from proto.file_transfer.ClientFileTransfer_pb2_grpc import *
 from grpc import StatusCode
 from asyncio import Semaphore
 from pika.adapters.blocking_connection  import BlockingChannel
-from utils import Utils
+from pika.exceptions import StreamLostError, ChannelWrongStateError
 import json, grpc, os
 
 ticket_id_list : list = []
@@ -14,11 +14,25 @@ sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
+    count = 0
+
     # Otteniamo l'indirizzo del peer da contattare
-    ticket : Ticket = getTicket()
-    if ticket == None:
-        return False
-    ticket_id_list.append(ticket.ticket_id)
+    while(True):
+        try:
+            ticket : Ticket = getTicket()
+            if ticket == None:
+                return False
+            ticket_id_list.append(ticket.ticket_id)
+            break
+        except (StreamLostError, ChannelWrongStateError) as e:
+            Debug.debug("Connessione con RabbitMQ caduta.")
+            if count >= 3:
+                Debug.debug("Impossibile stabilire la connesione con la coda.")
+                raise MyErrors.ConnectionFailedException() #TODO creare eccezione apposita
+            count+=1
+            RabbitSingleton.startNewConnection()
+            Debug.debug("Connessione con RabbitMQ ristabilità.")
+
     # Preparazione chiamata gRPC
     try:
         channel = grpc.insecure_channel(ticket.peer_addr)
@@ -89,16 +103,18 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         # Otteniamo i chunks dalla chiamata gRPC
         chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
         # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
-        return FileService().writeChunks(ticket_id = ticket_id, chunks = chunks)
+        return FileService().writeChunks(chunks = chunks, filename = filename)
+    except StopIteration as e:
+        raise MyErrors.RequestFailedException("Errore durante la lettura dei chunks ricevuti.")
     except grpc.RpcError as e:
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
-            raise MyErrors.FileNotFoundException("File richiesto non trovato")
+            raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
-            raise MyErrors.InvalidTicketException("Ticket usato non valido")
+            raise MyErrors.InvalidTicketException("Ticket usato non valido.")
         if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
-            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta")
+            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code() == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
         print(e.code())
         print(e.code().value)
         print(e.details())
@@ -111,17 +127,19 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     try:
         # Dividiamo il file in chunks
         chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
+        # Creo un contesto per trasmettere il filename e il ticket_id
+        context = grpc.metadata_call_credentials([('FILE_NAME', filename), ('TICKET_ID', ticket_id)])
         # Effettuiamo la chiamata gRPC 
-        response = stub.Upload(chunks)
+        response = stub.Upload(chunks, context)
     except grpc.RpcError as e:
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
-            raise MyErrors.FileNotFoundException("File richiesto non trovato")
+            raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
-            raise MyErrors.InvalidTicketException("Ticket usato non valido")
+            raise MyErrors.InvalidTicketException("Ticket usato non valido.")
         if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
-            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta")
+            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code() == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
         print(e.code())
         print(e.code().value)
         print(e.details())
@@ -131,7 +149,7 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
     if response.ticket_id != ticket_id:
         #TODO
-        raise Exception()
+        raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta. E' stata ricevuta una risposta relativa ad un'altra richiesta.")
     
     return response.success
 
@@ -157,20 +175,19 @@ class FileService:
         except IOError as e:
             raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
 
-    def readFile(self, file, ticket_id : str, filename : str):
+    def readFile(self, file):
         chunkSize = int(os.environ.get("CHUNK_SIZE"))
         chunk = file.read(chunkSize)
         while chunk:
-            fileChunk : FileChunk = FileChunk(ticket_id = ticket_id, file_name = filename, chunk = chunk)
+            fileChunk : FileChunk = FileChunk(chunk = chunk)
             yield fileChunk
             chunk = file.read(chunkSize)
 
-    def writeChunks(self, ticket_id : str, chunks):
-        return self.downloadFile(ticket_id, chunks)
+    def writeChunks(self, filename : str, chunks):
+        return self.downloadFile(chunk_list = chunks, filename = filename)
         
-    def downloadFile(self, ticket_id : str, chunk_list) -> bool:
+    def downloadFile(self, filename : str, chunk_list) -> bool:
         chunk : FileChunk = next(chunk_list)
-        filename = chunk.file_name
         try:
             with open("/files/" + filename, "wb") as file:
                 file.write(chunk.chunk)

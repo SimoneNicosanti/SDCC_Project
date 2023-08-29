@@ -33,14 +33,10 @@ class FileDownloadRequest(_message.Message):
     def __init__(self, ticket_id: _Optional[str] = ..., file_name: _Optional[str] = ...) -> None: ...
 
 class FileChunk(_message.Message):
-    __slots__ = ["ticket_id", "file_name", "chunk"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
-    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["chunk"]
     CHUNK_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
-    file_name: str
     chunk: bytes
-    def __init__(self, ticket_id: _Optional[str] = ..., file_name: _Optional[str] = ..., chunk: _Optional[bytes] = ...) -> None: ...
+    def __init__(self, chunk: _Optional[bytes] = ...) -> None: ...
 
 class Response(_message.Message):
     __slots__ = ["ticket_id", "success"]
@@ -49,15 +45,3 @@ class Response(_message.Message):
     ticket_id: str
     success: bool
     def __init__(self, ticket_id: _Optional[str] = ..., success: bool = ...) -> None: ...
-
-class EdgeFileDownloadRequest(_message.Message):
-    __slots__ = ["file_name"]
-    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
-    file_name: str
-    def __init__(self, file_name: _Optional[str] = ...) -> None: ...
-
-class EdgeFileChunk(_message.Message):
-    __slots__ = ["chunk"]
-    CHUNK_FIELD_NUMBER: _ClassVar[int]
-    chunk: bytes
-    def __init__(self, chunk: _Optional[bytes] = ...) -> None: ...

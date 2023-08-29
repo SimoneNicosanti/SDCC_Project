@@ -41,24 +41,24 @@ func ActAsPeer() {
 	edgePeerPtr := new(EdgePeer)
 	errorMessage, err := registerServiceForEdge(ipAddr, edgePeerPtr)
 	utils.ExitOnError(errorMessage, err)
-	log.Println("Servizio registrato")
+	log.Println("[*OK*] -> Servizio registrato")
 
 	//Connessione al server Registry per l'inserimento nella rete
 	adj := new(map[EdgePeer]byte)
 	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, adj)
 	registryClient = registryClientPtr
 
-	utils.ExitOnError("Impossibile registrare il servizio sul registry server: "+errorMessage, err)
-	log.Println("Servizio registrato su server Registry")
+	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server: "+errorMessage, err)
+	log.Println("[*OK*] -> Servizio registrato su server Registry")
 
 	log.Println(*adj) //Vicini restituiti dal server Registry
 
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
-	log.Println("Heartbeat iniziato")
+	log.Println("[*HEARTBEAT*] -> iniziato")
 
 	//Connessione a tutti i vicini
 	connectAndNotifyYourAdjacent(*adj)
-	log.Println("Connessione con tutti i vicini completata")
+	log.Println("[*NETWORK*] -> Connessione con tutti i vicini completata")
 
 	//defer registryClientPtr.Close()
 
@@ -73,7 +73,7 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 			continue
 		}
 
-		log.Println("Connessione con " + adjPeer.PeerAddr + " effettuata")
+		log.Println("[*CONN_SUCCESS*] -> Connessione con " + adjPeer.PeerAddr + " effettuata")
 
 		err = CallAdjAddNeighbour(client, selfPeer)
 		//Se il vicino a cui ci si è connessi non ricambia la connessione, chiudo la connessione stabilita precedentemente.
@@ -93,7 +93,7 @@ func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Cli
 
 	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, adj)
 	if err != nil {
-		return nil, "Errore durante la registrazione al Registry Server", err
+		return nil, "[*ERROR*] -> Errore durante la registrazione al Registry Server", err
 	}
 
 	return client, "", nil
@@ -102,7 +102,7 @@ func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Cli
 func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, error) {
 	err := rpc.Register(edgePeerPtr)
 	if err != nil {
-		return "Errore registrazione del servizio", err
+		return "[*ERROR*] -> Errore registrazione del servizio", err
 	}
 
 	rpc.HandleHTTP()
@@ -110,7 +110,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 
 	peerListener, err := net.Listen("tcp", bindIpAddr)
 	if err != nil {
-		return "Errore listen", err
+		return "[*ERROR*] -> Errore listen", err
 	}
 	edgePeerPtr.PeerAddr = peerListener.Addr().String()
 
@@ -143,7 +143,7 @@ func notifyBloomFilters() {
 		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: selfBloomFilter.filter}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
-			log.Println("Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
+			log.Println("[*ERROR*] -> Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
 		}
 	}
 
@@ -206,7 +206,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, erro
 		}
 	}
 
-	return EdgePeer{}, fmt.Errorf("[*ERROR*] No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+	return EdgePeer{}, fmt.Errorf("[*ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 
 }
 

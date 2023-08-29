@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// TODO Aggiungere logica per cui se il Ping fallisce per x volte allora è dato per morto
+// TODO Aggiungere logica per cui se ricevo Ping da un nodo che non è mio vicino allora lo aggiungo perché lo avevo dato per morto
 func pingsToAdjacents() {
 	PING_FREQUENCY := utils.GetIntegerEnvironmentVariable("PING_FREQUENCY")
 	for {
@@ -47,14 +49,14 @@ func heartbeatToRegistry() {
 		if registryClient == nil {
 			newRegistryConnection, err := ConnectToNode("registry:1234")
 			if err != nil {
-				log.Println("Impossibile stabilire connessione con il Registry")
+				log.Println("[*ERROR*] -> Impossibile stabilire connessione con il Registry")
 				continue
 			}
 			registryClient = newRegistryConnection
 		}
 		err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, &returnMap)
 		if err != nil {
-			log.Println("Failed to heartbeat to Registry")
+			log.Println("[*ERROR*] -> Failed to heartbeat to Registry")
 			log.Println(err.Error())
 			registryClient.Close()
 			registryClient = nil
@@ -63,7 +65,7 @@ func heartbeatToRegistry() {
 		coerenceWithRegistry(returnMap)
 
 		adjacentsMap.connsMutex.Unlock()
-		log.Println("Heartbeat action executed.")
+		//log.Println("[*HEARTBEAT*] -> executed.")
 	}
 }
 
@@ -77,7 +79,7 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 		if !isInMap {
 			client, err := ConnectToNode(registryAdjPeer.PeerAddr)
 			if err != nil {
-				log.Println("Errore connessione " + registryAdjPeer.PeerAddr)
+				log.Println("[*ERROR*] -> Errore connessione " + registryAdjPeer.PeerAddr)
 			} else {
 				adjacentsMap.peerConns[registryAdjPeer] = client
 			}
@@ -99,8 +101,8 @@ func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 	// il peer corrente lo ignorerà.
 	if err != nil {
-		log.Println("Impossibile stabilire la connessione con " + peer.PeerAddr)
-		return nil, errors.New("Impossibile stabilire la connessione con " + peer.PeerAddr)
+		log.Println("[*ERROR*] -> Impossibile stabilire la connessione con " + peer.PeerAddr)
+		return nil, errors.New("[*ERROR*] -> Impossibile stabilire la connessione con " + peer.PeerAddr)
 	}
 
 	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni

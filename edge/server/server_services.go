@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"edge/peer"
 	"edge/proto/client"
@@ -11,7 +10,15 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"syscall"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -23,51 +30,70 @@ type FileServiceServer struct {
 	client.UnimplementedFileServiceServer
 }
 
+type DownloadStream struct {
+	clientStream client.FileService_DownloadServer
+	fileName     string
+	ticketID     string
+	fileChannel  chan []byte
+}
+
+type UploadStream struct {
+	clientStream client.FileService_UploadServer
+	fileName     string
+	fileChannel  chan []byte
+}
+
+func (u *UploadStream) Read(p []byte) (n int, err error) {
+	fileChunk, err := u.clientStream.Recv()
+	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		u.fileChannel <- errorHash[:]
+		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to S3 encountered some problems")
+	}
+	copy(p, fileChunk.Chunk)
+	u.fileChannel <- fileChunk.Chunk
+
+	return len(fileChunk.Chunk), nil
+}
+
+func (d *DownloadStream) WriteAt(p []byte, _ int64) (n int, err error) {
+	// Se il Concurrency del Downloader è impostato ad 1 non serve usare l'offset
+	err = d.clientStream.Send(&client.FileChunk{Chunk: p})
+	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		d.fileChannel <- errorHash[:]
+		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to client encountered some problems")
+	}
+	log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+	d.fileChannel <- p
+	return len(p), nil
+}
+
 func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
+	fileName := string(uploadStream.Context().Value("FILE_NAME").(string))
+	ticketID := string(uploadStream.Context().Value("TICKET_ID").(string))
+	// TODO Vedere come gestire grandezza dei file --> Passiamo dimensione del file nel context
 
-	message, err := uploadStream.Recv()
-	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from clientstream via gRPC")
-	}
-
-	isValidRequest := checkTicket(message.TicketId)
+	isValidRequest := checkTicket(ticketID)
 	if isValidRequest == -1 {
 		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request with Invalid Ticket")
 	}
 	defer publishNewTicket(isValidRequest)
 
-	// TODO Aggiungere logica di aggiunta file ad S3
-	localFile, err := os.Create("/files/" + message.FileName)
-	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_FILE_CREATE_ERROR), "[*ERROR*] - File creation failed")
-	}
-	defer localFile.Close()
-
 	// Salvo prima su file locale o su S3?? PRIMA S3
-	fileChannel := make(chan []byte)
+	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 	defer close(fileChannel)
-	go writeFileOnS3(fileChannel, message.FileName)
 
-	for {
-		_, err = localFile.Write(message.Chunk)
-		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_FILE_WRITE_ERROR), "[*ERROR*] - Couldn't write chunk on local file")
-		}
-		fileChannel <- message.Chunk
+	uploadStreamReader := UploadStream{clientStream: uploadStream, fileName: fileName, fileChannel: fileChannel}
 
-		message, err = uploadStream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from clientstream via gRPC")
-		}
-	}
+	// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
+	go writeChunksOnFile(fileChannel, fileName)
+	sendToS3(fileName, uploadStreamReader)
 
-	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [REQ_ID: %s]\r\n", message.FileName, message.TicketId)
-	response := client.Response{TicketId: message.TicketId, Success: true}
-	err = uploadStream.SendAndClose(&response)
+	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [TICKET_ID: %s]\r\n", fileName, ticketID)
+	response := client.Response{TicketId: ticketID, Success: true}
+	err := uploadStream.SendAndClose(&response)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Couldn't close clientstream")
 	}
@@ -75,18 +101,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	return nil
 }
 
-func writeFileOnS3(fileChannel chan []byte, fileName string) {
-	for chunk := range fileChannel {
-		log.Println(chunk)
-	}
-}
-
-//TODO lancio N thread (N = #vicini) e aspetto solo risposta affermativa --> altrimenti timeout e contatto S3 --> OK->SEND_FILE/FILE_NOT_FOUND_ERROR
-// per limitare il numero di thread lanciati lo richiedo in modulo alla threshold (chiedo ai primi k, poi ai secondi k, etc etc...)
-// Se sono presenti vicini con un riscontro positivo sul loro filtro di bloom, considereremo loro nei primi k da contattare (eventualmente
-// aggiungiamo altri casualmente se non arriviamo a k)
-// imposto un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
-// imposto un TTL per il numero di hop della richiesta (faccio una ricerca relativamente locale)
+// TODO impostare un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
 	isValidRequest := checkTicket(requestMessage.TicketId)
 	if isValidRequest == -1 {
@@ -99,20 +114,26 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL")}
 		ownerEdge, err := peer.NeighboursFileLookup(fileRequest)
 		if err == nil {
+			log.Printf("[*NETWORK*] -> file '%s' found in edge %s", requestMessage.FileName, ownerEdge.PeerAddr)
 			// ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
 			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream)
 		} else {
 			// ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
-			sendFromS3()
+			log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
+			err = sendFromS3(requestMessage, downloadStream)
+			if err != nil {
+				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
+			}
 		}
 	} else if err == nil {
 		// ce l'ho io --> Leggi file e invia chunk
+		log.Printf("[*CACHE*] -> File '%s' found in cache", requestMessage.FileName)
 		return sendFromLocalFileStream(requestMessage, downloadStream)
 	} else { //Got an error
 		// TODO Aggiungere errore per path sbagliato
 
 	}
-
+	log.Println("[*SUCCESS*] -> Invio del file '" + requestMessage.FileName + "' Completata")
 	return nil
 }
 
@@ -128,7 +149,7 @@ func sendFromOtherEdge(ownerEdge peer.EdgePeer, requestMessage *client.FileDownl
 	if err != nil {
 		return status.Error(codes.Code(edge.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to setup edge download stream via gRPC")
 	}
-	fileChannel := make(chan []byte)
+	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 	defer close(fileChannel)
 	go writeChunksOnFile(fileChannel, requestMessage.FileName)
 	for {
@@ -141,7 +162,7 @@ func sendFromOtherEdge(ownerEdge peer.EdgePeer, requestMessage *client.FileDownl
 			fileChannel <- errorHash[:]
 			return status.Error(codes.Code(edge.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from other edge via gRPC")
 		}
-		clientDownloadStream.Send(&client.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: edgeChunk.Chunk})
+		clientDownloadStream.Send(&client.FileChunk{Chunk: edgeChunk.Chunk})
 		fileChannel <- edgeChunk.Chunk
 	}
 
@@ -161,8 +182,9 @@ func writeChunksOnFile(fileChannel chan []byte, fileName string) error {
 
 	errorHashString := fmt.Sprintf("%x", sha256.Sum256([]byte("[*ERROR*]")))
 	for chunk := range fileChannel {
-		chunkString := string(chunk)
-		if chunkString == errorHashString {
+		chunkString := fmt.Sprintf("%x", chunk)
+		if strings.Compare(chunkString, errorHashString) == 0 {
+			log.Println("[*ABORT*] -> Error occurred, removing file...")
 			return os.Remove("/files/" + fileName)
 		}
 		_, err = localFile.Write(chunk)
@@ -171,14 +193,80 @@ func writeChunksOnFile(fileChannel chan []byte, fileName string) error {
 			return status.Error(codes.Code(edge.ErrorCodes_FILE_WRITE_ERROR), "[*ERROR*] - Couldn't write chunk on local file")
 		}
 	}
-	log.Printf("[*LOAD_SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
+	log.Printf("[*SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
 
 	return nil
 }
 
-func sendFromS3() {
+func sendToS3(fileName string, uploadStreamReader UploadStream) error {
+
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		Profile: "default",
+	}))
+	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
+		d.PartSize = int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
+		d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+	})
+
+	_, err := uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), // nome bucket
+		Key:    &fileName,                                                  //percorso file da caricare
+		Body:   &uploadStreamReader,
+	})
+	if err != nil {
+		fmt.Println("Errore nell'upload:", err)
+		return err
+	}
+
+	return nil
+}
+
+func sendFromS3(requestMessage *client.FileDownloadRequest, clientDownloadStream client.FileService_DownloadServer) error {
 	// 1] Open connection to S3
 	// 2] retrieve chunk by chunk (send to client + save in local)
+	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	downloadStreamWriter := DownloadStream{clientDownloadStream, requestMessage.FileName, requestMessage.TicketId, fileChannel}
+	defer close(fileChannel)
+	// sess := session.Must(session.NewSessionWithOptions(session.Options{
+	// 	Profile:     "default",
+	// 	Credentials: session.CredentialsProviderOptions{},
+	// }))
+	go writeChunksOnFile(fileChannel, requestMessage.FileName)
+	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
+	})
+
+	// TODO Capire perché fa come cazzo gli pare
+	// Crea un downloader con la dimensione delle parti configurata
+	downloader := s3manager.NewDownloader(
+		sess,
+		func(d *s3manager.Downloader) {
+			d.PartSize = 10 * 1024 * 1024 // int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
+			// d.Concurrency = 1             //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+		},
+		func(d *s3manager.Downloader) {
+			//d.PartSize = 10 * 1024 * 1024 // int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
+			d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+		},
+	)
+	// NOTA -> se ne sbatte il cazzo dei parametri :)
+	log.Println(downloader.PartSize, downloader.Concurrency)
+
+	// Esegui il download parallelo e scrivi i dati nello stream gRPC
+	_, err = downloader.Download(&downloadStreamWriter, &s3.GetObjectInput{
+		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
+		Key:    aws.String(requestMessage.FileName),                        //percorso file da scaricare
+	})
+	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		fileChannel <- errorHash[:]
+		fmt.Println("Errore nel download:", err)
+		return err
+	}
+
+	return nil
+
 }
 
 func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
@@ -200,7 +288,7 @@ func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloa
 		if err != nil {
 			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] - Failed during read operation\r")
 		}
-		downloadStream.Send(&client.FileChunk{TicketId: requestMessage.TicketId, FileName: requestMessage.FileName, Chunk: buffer[:n]})
+		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
 	}
 	return nil
 }
@@ -213,18 +301,3 @@ func checkTicket(requestId string) int {
 	}
 	return -1
 }
-
-/*
-	go func() {
-		channel int
-		for {
-			conn := Accept()
-			channel <- 0
-			go Serve(conn)
-			defer {
-				<- channel
-				close(conn)
-			}
-		}
-	}
-*/

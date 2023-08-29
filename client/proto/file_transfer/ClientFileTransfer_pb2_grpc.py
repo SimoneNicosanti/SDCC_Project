@@ -19,11 +19,6 @@ class FileServiceStub(object):
                 request_serializer=file__transfer_dot_ClientFileTransfer__pb2.FileDownloadRequest.SerializeToString,
                 response_deserializer=file__transfer_dot_ClientFileTransfer__pb2.FileChunk.FromString,
                 )
-        self.DownloadFromEdge = channel.unary_stream(
-                '/client.FileService/DownloadFromEdge',
-                request_serializer=file__transfer_dot_ClientFileTransfer__pb2.EdgeFileDownloadRequest.SerializeToString,
-                response_deserializer=file__transfer_dot_ClientFileTransfer__pb2.EdgeFileChunk.FromString,
-                )
         self.Upload = channel.stream_unary(
                 '/client.FileService/Upload',
                 request_serializer=file__transfer_dot_ClientFileTransfer__pb2.FileChunk.SerializeToString,
@@ -40,14 +35,9 @@ class FileServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DownloadFromEdge(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def Upload(self, request_iterator, context):
-        """rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
+        """rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
+        rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -60,11 +50,6 @@ def add_FileServiceServicer_to_server(servicer, server):
                     servicer.Download,
                     request_deserializer=file__transfer_dot_ClientFileTransfer__pb2.FileDownloadRequest.FromString,
                     response_serializer=file__transfer_dot_ClientFileTransfer__pb2.FileChunk.SerializeToString,
-            ),
-            'DownloadFromEdge': grpc.unary_stream_rpc_method_handler(
-                    servicer.DownloadFromEdge,
-                    request_deserializer=file__transfer_dot_ClientFileTransfer__pb2.EdgeFileDownloadRequest.FromString,
-                    response_serializer=file__transfer_dot_ClientFileTransfer__pb2.EdgeFileChunk.SerializeToString,
             ),
             'Upload': grpc.stream_unary_rpc_method_handler(
                     servicer.Upload,
@@ -95,23 +80,6 @@ class FileService(object):
         return grpc.experimental.unary_stream(request, target, '/client.FileService/Download',
             file__transfer_dot_ClientFileTransfer__pb2.FileDownloadRequest.SerializeToString,
             file__transfer_dot_ClientFileTransfer__pb2.FileChunk.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def DownloadFromEdge(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/client.FileService/DownloadFromEdge',
-            file__transfer_dot_ClientFileTransfer__pb2.EdgeFileDownloadRequest.SerializeToString,
-            file__transfer_dot_ClientFileTransfer__pb2.EdgeFileChunk.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
