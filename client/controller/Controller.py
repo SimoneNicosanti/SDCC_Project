@@ -126,11 +126,11 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     
     try:
         # Dividiamo il file in chunks
-        chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
+        chunks = FileService().getChunks(filename = filename)
         # Creo un contesto per trasmettere il filename e il ticket_id
-        context = grpc.metadata_call_credentials([('FILE_NAME', filename), ('TICKET_ID', ticket_id)])
+        #context = grpc.metadata_call_credentials([('FILE_NAME', filename), ('TICKET_ID', ticket_id)])
         # Effettuiamo la chiamata gRPC 
-        response = stub.Upload(chunks, context)
+        response = stub.Upload(chunks)
     except grpc.RpcError as e:
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
@@ -164,14 +164,11 @@ def login(username : str, passwd : str, email : str) -> bool :
 class FileService:
     global ticket_id_list
 
-    def getChunks(self, ticket_id : str, filename : str):
-        #Security check
-        if ticket_id not in ticket_id_list:
-            raise MyErrors.InvalidTicketException(f"Security check failed --> {ticket_id} is not in the opened ticket list")
+    def getChunks(self, filename : str):
 
         try:
             with open("/files/" + filename, "rb") as file :
-                return self.readFile(file, ticket_id, filename)
+                return self.readFile(file)
         except IOError as e:
             raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
 
