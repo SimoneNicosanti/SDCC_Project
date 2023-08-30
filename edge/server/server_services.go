@@ -56,7 +56,7 @@ func (u *UploadStream) Read(p []byte) (n int, err error) {
 	return len(fileChunk.Chunk), nil
 }
 
-func (d *DownloadStream) WriteAt(p []byte, _ int64) (n int, err error) {
+func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
 	// Se il Concurrency del Downloader è impostato ad 1 non serve usare l'offset
 	err = d.clientStream.Send(&client.FileChunk{Chunk: p})
 	if err != nil {
@@ -64,7 +64,8 @@ func (d *DownloadStream) WriteAt(p []byte, _ int64) (n int, err error) {
 		d.fileChannel <- errorHash[:]
 		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to client encountered some problems")
 	}
-	log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+	//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+	log.Printf("OFFSET --> %d\n", off)
 	d.fileChannel <- p
 	return len(p), nil
 }
@@ -113,20 +114,17 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	if os.IsNotExist(err) {
 		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL")}
 		ownerEdge, err := peer.NeighboursFileLookup(fileRequest)
-		if err == nil {
+		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
 			log.Printf("[*NETWORK*] -> file '%s' found in edge %s", requestMessage.FileName, ownerEdge.PeerAddr)
-			// ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
 			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream)
-		} else {
-			// ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
+		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
 			log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
 			err = sendFromS3(requestMessage, downloadStream)
 			if err != nil {
 				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
 			}
 		}
-	} else if err == nil {
-		// ce l'ho io --> Leggi file e invia chunk
+	} else if err == nil { // ce l'ha l'edge corrente --> Leggi file e invia chunk
 		log.Printf("[*CACHE*] -> File '%s' found in cache", requestMessage.FileName)
 		return sendFromLocalFileStream(requestMessage, downloadStream)
 	} else { //Got an error
@@ -232,10 +230,19 @@ func sendFromS3(requestMessage *client.FileDownloadRequest, clientDownloadStream
 	// 	Credentials: session.CredentialsProviderOptions{},
 	// }))
 	go writeChunksOnFile(fileChannel, requestMessage.FileName)
-	sess, err := session.NewSession(&aws.Config{
+	// sess, err := session.NewSession(&aws.Config{
+	// 	Region:      aws.String("us-east-1"),
+	// 	Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
+	// })
+	sess := session.Must(session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
 		Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
-	})
+	}))
+	// if err != nil {
+	// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+	// 	fileChannel <- errorHash[:]
+	// 	return fmt.Errorf("[*ERROR*] Error Opening AWS Session")
+	// }
 
 	// TODO Capire perché fa come cazzo gli pare
 	// Crea un downloader con la dimensione delle parti configurata
@@ -243,21 +250,20 @@ func sendFromS3(requestMessage *client.FileDownloadRequest, clientDownloadStream
 		sess,
 		func(d *s3manager.Downloader) {
 			d.PartSize = 10 * 1024 * 1024 // int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
-			// d.Concurrency = 1             //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
-		},
-		func(d *s3manager.Downloader) {
-			//d.PartSize = 10 * 1024 * 1024 // int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
-			d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+			d.Concurrency = 1             //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 		},
 	)
 	// NOTA -> se ne sbatte il cazzo dei parametri :)
 	log.Println(downloader.PartSize, downloader.Concurrency)
 
 	// Esegui il download parallelo e scrivi i dati nello stream gRPC
-	_, err = downloader.Download(&downloadStreamWriter, &s3.GetObjectInput{
-		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
-		Key:    aws.String(requestMessage.FileName),                        //percorso file da scaricare
-	})
+	_, err := downloader.Download(
+		&downloadStreamWriter,
+		&s3.GetObjectInput{
+			Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
+			Key:    aws.String(requestMessage.FileName),                        //percorso file da scaricare
+		},
+	)
 	if err != nil {
 		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 		fileChannel <- errorHash[:]
