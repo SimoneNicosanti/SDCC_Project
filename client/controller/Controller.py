@@ -136,9 +136,6 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     except IOError as e:
             raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
     except grpc.RpcError as e:
-        print(e.code())
-        print(e.code().value)
-        print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
@@ -172,13 +169,13 @@ class FileService:
             try:
                 with open("/files/" + filename, "rb") as file :
                     chunkSize = int(os.environ.get("CHUNK_SIZE"))
-                    chunk = file.read(chunkSize)
-                    
+                    chunk = file.read(chunkSize)            
                     while chunk:
                         print("Inviato un chunk di " + len(chunk) + " bytes")
                         fileChunk : FileChunk = FileChunk(chunk = chunk)
                         yield fileChunk
                         chunk = file.read(chunkSize)
+
             except Exception as e:
                 print(e)
         
