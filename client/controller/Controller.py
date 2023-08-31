@@ -6,7 +6,7 @@ from grpc import StatusCode
 from asyncio import Semaphore
 from pika.adapters.blocking_connection  import BlockingChannel
 from pika.exceptions import StreamLostError, ChannelWrongStateError
-import json, grpc, os
+import json, grpc, os, io
 
 ticket_id_list : list = []
 data = None
@@ -126,11 +126,16 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     
     try:
         # Dividiamo il file in chunks
-        chunks = FileService().getChunks(filename = filename)
+        with open("/files/" + filename, "rb") as file :
+            chunks = FileService().getChunks(file = file)
         # Creo un contesto per trasmettere il filename e il ticket_id
-        #context = grpc.metadata_call_credentials([('FILE_NAME', filename), ('TICKET_ID', ticket_id)])
-        # Effettuiamo la chiamata gRPC 
-        response = stub.Upload(chunks)
+        metadata = grpc.aio.Metadata(('FILE_NAME', filename), ('TICKET_ID', ticket_id))
+        # Effettuiamo la chiamata gRPC
+        response = stub.Upload(
+            chunks,
+            metadata = metadata)
+    except IOError as e:
+            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
     except grpc.RpcError as e:
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
@@ -164,19 +169,28 @@ def login(username : str, passwd : str, email : str) -> bool :
 class FileService:
     global ticket_id_list
 
-    def getChunks(self, filename : str):
-
-        try:
-            with open("/files/" + filename, "rb") as file :
-                return self.readFile(file)
-        except IOError as e:
-            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
-
-    def readFile(self, file):
+    def getChunks(self, file):
         chunkSize = int(os.environ.get("CHUNK_SIZE"))
         chunk = file.read(chunkSize)
+        count = 0
+        print(count)
         while chunk:
             fileChunk : FileChunk = FileChunk(chunk = chunk)
+            count+=1
+            print(count)
+            yield fileChunk
+            chunk = file.read(chunkSize)
+        
+
+    def readFile(self, file : io.BufferedReader):
+        chunkSize = int(os.environ.get("CHUNK_SIZE"))
+        chunk = file.read(chunkSize)
+        count = 0
+        print(count)
+        while chunk:
+            fileChunk : FileChunk = FileChunk(chunk = chunk)
+            count+=1
+            print(count)
             yield fileChunk
             chunk = file.read(chunkSize)
 

@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	status "google.golang.org/grpc/status"
 )
 
@@ -64,16 +65,25 @@ func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
 		d.fileChannel <- errorHash[:]
 		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to client encountered some problems")
 	}
-	//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
-	log.Printf("OFFSET --> %d\n", off)
-	d.fileChannel <- p
+	log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+	chunkCopy := make([]byte, len(p)) // IMPORTANTE
+	copy(chunkCopy, p)
+	d.fileChannel <- chunkCopy
 	return len(p), nil
 }
 
 func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
+	log.Println(uploadStream.Context().Value("FILE_NAME"))
 	fileName := string(uploadStream.Context().Value("FILE_NAME").(string))
 	ticketID := string(uploadStream.Context().Value("TICKET_ID").(string))
+	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
+	if !thereIsMetadata {
+		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request No Ticket")
+	}
+	//md.Get()
+	log.Println(md)
+	return nil
 	// TODO Vedere come gestire grandezza dei file --> Passiamo dimensione del file nel context
 
 	isValidRequest := checkTicket(ticketID)
