@@ -42,19 +42,37 @@ type UploadStream struct {
 	clientStream client.FileService_UploadServer
 	fileName     string
 	fileChannel  chan []byte
+	endedStream  bool
 }
 
 func (u *UploadStream) Read(p []byte) (n int, err error) {
-	fileChunk, err := u.clientStream.Recv()
-	if err != nil {
-		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-		u.fileChannel <- errorHash[:]
-		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to S3 encountered some problems")
-	}
-	copy(p, fileChunk.Chunk)
-	u.fileChannel <- fileChunk.Chunk
+	otherBuffer := make([]byte, 0)
+	for len(otherBuffer) < 5242880 {
+		fileChunk, err := u.clientStream.Recv()
+		if err == io.EOF {
+			log.Println("Flusso finito")
+			if !u.endedStream {
+				u.endedStream = true
+				break
+			} else {
+				return 0, io.EOF
+			}
 
-	return len(fileChunk.Chunk), nil
+		}
+		if err != nil {
+			errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+			u.fileChannel <- errorHash[:]
+			return 0, fmt.Errorf("[*ERROR*] -> Message Receive From gRPC encountered some problems")
+		}
+		otherBuffer = append(otherBuffer, fileChunk.Chunk...)
+
+		chunkCopy := make([]byte, len(p))
+		copy(chunkCopy, fileChunk.Chunk)
+		u.fileChannel <- chunkCopy
+	}
+	copy(p, otherBuffer)
+
+	return len(p), nil
 }
 
 func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
@@ -74,16 +92,13 @@ func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
 
 func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
-	log.Println(uploadStream.Context().Value("FILE_NAME"))
-	fileName := string(uploadStream.Context().Value("FILE_NAME").(string))
-	ticketID := string(uploadStream.Context().Value("TICKET_ID").(string))
 	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
 	if !thereIsMetadata {
+		log.Println("NO METADATA")
 		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request No Ticket")
 	}
-	//md.Get()
-	log.Println(md)
-	return nil
+	ticketID := md.Get("ticket_id")[0]
+	fileName := md.Get("file_name")[0]
 	// TODO Vedere come gestire grandezza dei file --> Passiamo dimensione del file nel context
 
 	isValidRequest := checkTicket(ticketID)
@@ -96,15 +111,18 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 	defer close(fileChannel)
 
-	uploadStreamReader := UploadStream{clientStream: uploadStream, fileName: fileName, fileChannel: fileChannel}
+	uploadStreamReader := UploadStream{clientStream: uploadStream, fileName: fileName, fileChannel: fileChannel, endedStream: false}
 
 	// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
 	go writeChunksOnFile(fileChannel, fileName)
-	sendToS3(fileName, uploadStreamReader)
-
+	err := sendToS3(fileName, uploadStreamReader)
+	if err != nil {
+		log.Println("[*ERROR*] - File Upload to S3 encountered some error")
+		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), "[*ERROR*] - File Upload to S3 encountered some error")
+	}
 	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [TICKET_ID: %s]\r\n", fileName, ticketID)
 	response := client.Response{TicketId: ticketID, Success: true}
-	err := uploadStream.SendAndClose(&response)
+	err = uploadStream.SendAndClose(&response)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Couldn't close clientstream")
 	}
@@ -208,11 +226,12 @@ func writeChunksOnFile(fileChannel chan []byte, fileName string) error {
 
 func sendToS3(fileName string, uploadStreamReader UploadStream) error {
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		Profile: "default",
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
 	}))
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
-		d.PartSize = int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
+		//d.PartSize = int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
 		d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 	})
 
@@ -222,6 +241,8 @@ func sendToS3(fileName string, uploadStreamReader UploadStream) error {
 		Body:   &uploadStreamReader,
 	})
 	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		uploadStreamReader.fileChannel <- errorHash[:]
 		fmt.Println("Errore nell'upload:", err)
 		return err
 	}
@@ -259,8 +280,8 @@ func sendFromS3(requestMessage *client.FileDownloadRequest, clientDownloadStream
 	downloader := s3manager.NewDownloader(
 		sess,
 		func(d *s3manager.Downloader) {
-			d.PartSize = 10 * 1024 * 1024 // int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
-			d.Concurrency = 1             //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+			d.PartSize = int64(utils.GetIntegerEnvironmentVariable("CHUNK_SIZE"))
+			d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 		},
 	)
 	// NOTA -> se ne sbatte il cazzo dei parametri :)

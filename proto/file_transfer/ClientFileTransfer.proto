@@ -12,6 +12,7 @@ service FileService {
 
 enum ErrorCodes {
     OK = 0;
+    S3_ERROR = 9;
     CHUNK_ERROR = 10;
     INVALID_TICKET = 11;
     FILE_CREATE_ERROR = 12 ;
