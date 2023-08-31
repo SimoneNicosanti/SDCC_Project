@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"edge/proto/edge"
 	"edge/utils"
 	"fmt"
 	"log"
@@ -9,7 +10,8 @@ import (
 	"net/http"
 	"net/rpc"
 	"time"
-	// boom "github.com/tylertreat/BoomFilters"
+
+	"google.golang.org/grpc"
 )
 
 /*
@@ -22,11 +24,8 @@ import (
 	TODO : Meccanismo di caching
 */
 
-type EdgePeer struct {
-	PeerAddr string
-}
-
 var selfPeer EdgePeer
+var selfEdgeServer EdgeFileServiceServer
 var registryClient *rpc.Client
 
 func ActAsPeer() {
@@ -36,6 +35,8 @@ func ActAsPeer() {
 	utils.ExitOnError("", err)
 
 	setupBloomFilterStruct()
+
+	registerGRPC()
 
 	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
@@ -62,6 +63,23 @@ func ActAsPeer() {
 
 	//defer registryClientPtr.Close()
 
+}
+
+// Registra il server gRPC per ricevere le richieste di trasferimento file dagli edge
+func registerGRPC() {
+	ipAddr, err := utils.GetMyIPAddr()
+	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
+
+	serverEndpoint := fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
+	lis, err := net.Listen("tcp", serverEndpoint)
+	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
+
+	grpcServer := grpc.NewServer()
+	selfEdgeServer = EdgeFileServiceServer{addr: serverEndpoint}
+	edge.RegisterEdgeFileServiceServer(grpcServer, &selfEdgeServer)
+
+	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
+	go grpcServer.Serve(lis)
 }
 
 func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
@@ -120,10 +138,6 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 	selfPeer = EdgePeer{edgePeerPtr.PeerAddr}
 
 	return "", err
-}
-
-func createHandler() {
-
 }
 
 func temporizedNotifyBloomFilters() {

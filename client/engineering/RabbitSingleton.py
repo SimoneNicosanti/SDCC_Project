@@ -16,6 +16,7 @@ def getRabbitChannel() -> pika.adapters.blocking_connection.BlockingChannel :
     return __CHANNEL
 
 def startNewConnection() -> pika.adapters.blocking_connection.BlockingChannel :
+    global __CHANNEL
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host = 'rabbit_mq', port = '5672')
     )

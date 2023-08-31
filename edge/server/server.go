@@ -116,29 +116,3 @@ func setUpGRPC() {
 	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
 	go grpcServer.Serve(lis)
 }
-
-// func setUpGRPC_2() {
-// 	ipAddr, err := utils.GetMyIPAddr()
-// 	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
-// 	serverEndpoint = fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
-// 	lis, err := net.Listen("tcp", serverEndpoint)
-// 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
-// 	grpcServer := grpc.NewServer()
-// 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-// 	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
-
-// 	go func() {
-// 		connChann := make(chan int, 10)
-// 		for {
-// 			conn, err := lis.Accept()
-// 			if err != nil {
-
-// 			}
-// 			connChann <- 0
-// 			defer func() {
-// 				<-connChann
-// 			}()
-// 			// rpc.ServeRequest(conn.SetReadDeadline())
-// 		}
-// 	}()
-// }

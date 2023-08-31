@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go v1.44.333
 	github.com/rabbitmq/amqp091-go v1.8.1
 	github.com/tylertreat/BoomFilters v0.0.0-20210315201527-1a82519a3e43
+	github.com/umpc/go-sortedmap v0.0.0-20180422175548-64ab94c482f4
 	golang.org/x/net v0.9.0
 	google.golang.org/grpc v1.57.0
 	google.golang.org/protobuf v1.31.0

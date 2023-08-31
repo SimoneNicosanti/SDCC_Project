@@ -8,6 +8,7 @@ DESCRIPTOR: _descriptor.FileDescriptor
 class ErrorCodes(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = []
     OK: _ClassVar[ErrorCodes]
+    S3_ERROR: _ClassVar[ErrorCodes]
     CHUNK_ERROR: _ClassVar[ErrorCodes]
     INVALID_TICKET: _ClassVar[ErrorCodes]
     FILE_CREATE_ERROR: _ClassVar[ErrorCodes]
@@ -16,6 +17,7 @@ class ErrorCodes(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FILE_READ_ERROR: _ClassVar[ErrorCodes]
     STREAM_CLOSE_ERROR: _ClassVar[ErrorCodes]
 OK: ErrorCodes
+S3_ERROR: ErrorCodes
 CHUNK_ERROR: ErrorCodes
 INVALID_TICKET: ErrorCodes
 FILE_CREATE_ERROR: ErrorCodes

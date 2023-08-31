@@ -14,6 +14,11 @@ import (
 
 type EdgeFileServiceServer struct {
 	edge.UnimplementedEdgeFileServiceServer
+	addr string
+}
+
+type EdgePeer struct {
+	PeerAddr string
 }
 
 // TODO Togliere il ping?? Ha sempre ragione il registry: potrebbe funzionare anche con, ma la logica rimane abbastanza simile
@@ -38,7 +43,7 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	return err
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *EdgePeer) error {
+func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *EdgeFileServiceServer) error {
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
 	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
@@ -46,10 +51,10 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			NeighboursFileLookup(fileRequestMessage)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
-			return fmt.Errorf("File '%s' wasn't found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
+			return fmt.Errorf("[*ERROR*] File '%s' wasn't found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
-		*returnPtr = selfPeer
+		*returnPtr = selfEdgeServer
 	} else { // Got an error :(
 		return err
 	}

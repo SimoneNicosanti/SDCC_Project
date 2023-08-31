@@ -6,7 +6,7 @@ from grpc import StatusCode
 from asyncio import Semaphore
 from pika.adapters.blocking_connection  import BlockingChannel
 from pika.exceptions import StreamLostError, ChannelWrongStateError
-import json, grpc, os
+import json, grpc, os, io
 
 ticket_id_list : list = []
 data = None
@@ -111,7 +111,7 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
             raise MyErrors.InvalidTicketException("Ticket usato non valido.")
-        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
+        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR or e.code().value[0] == ErrorCodes.S3_ERROR:
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
@@ -126,23 +126,27 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     
     try:
         # Dividiamo il file in chunks
-        chunks = FileService().getChunks(ticket_id = ticket_id, filename = filename)
-        # Creo un contesto per trasmettere il filename e il ticket_id
-        context = grpc.metadata_call_credentials([('FILE_NAME', filename), ('TICKET_ID', ticket_id)])
-        # Effettuiamo la chiamata gRPC 
-        response = stub.Upload(chunks, context)
+        #with open("/files/" + filename, "rb") as file :
+        chunks = FileService().getChunks(filename = filename)
+        # Effettuiamo la chiamata gRPC
+        response = stub.Upload(
+            chunks,
+            metadata = (('file_name', filename), ('ticket_id', ticket_id), )
+        )
+    except IOError as e:
+            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
     except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
             raise MyErrors.InvalidTicketException("Ticket usato non valido.")
-        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
+        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR or e.code().value[0] == ErrorCodes.S3_ERROR:
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
-        print(e.code())
-        print(e.code().value)
-        print(e.details())
         raise e
     
 
@@ -164,22 +168,30 @@ def login(username : str, passwd : str, email : str) -> bool :
 class FileService:
     global ticket_id_list
 
-    def getChunks(self, ticket_id : str, filename : str):
-        #Security check
-        if ticket_id not in ticket_id_list:
-            raise MyErrors.InvalidTicketException(f"Security check failed --> {ticket_id} is not in the opened ticket list")
+    def getChunks(self, filename):
+            try:
+                with open("/files/" + filename, "rb") as file :
+                    chunkSize = int(os.environ.get("CHUNK_SIZE"))
+                    chunk = file.read(chunkSize)
+                    
+                    while chunk:
+                        print("Inviato un chunk di " + len(chunk) + " bytes")
+                        fileChunk : FileChunk = FileChunk(chunk = chunk)
+                        yield fileChunk
+                        chunk = file.read(chunkSize)
+            except Exception as e:
+                print(e)
+        
 
-        try:
-            with open("/files/" + filename, "rb") as file :
-                return self.readFile(file, ticket_id, filename)
-        except IOError as e:
-            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
-
-    def readFile(self, file):
+    def readFile(self, file : io.BufferedReader):
         chunkSize = int(os.environ.get("CHUNK_SIZE"))
         chunk = file.read(chunkSize)
+        count = 0
+        print(count)
         while chunk:
             fileChunk : FileChunk = FileChunk(chunk = chunk)
+            count+=1
+            print(count)
             yield fileChunk
             chunk = file.read(chunkSize)
 
