@@ -55,7 +55,7 @@ services:
       - ./edge:/src
       - ./proto/file_transfer:/proto
       - ./docker/edge_files:/files
-      - ./docker/aws_credentials:/home/.aws
+      - ./docker/aws:/aws
     working_dir : /src
     deploy:
       resources:

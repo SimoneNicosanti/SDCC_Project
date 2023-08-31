@@ -171,7 +171,7 @@ class FileService:
                     chunkSize = int(os.environ.get("CHUNK_SIZE"))
                     chunk = file.read(chunkSize)            
                     while chunk:
-                        print("Inviato un chunk di " + len(chunk) + " bytes")
+                        print("Inviato un chunk di " + str(len(chunk)) + " bytes")
                         fileChunk : FileChunk = FileChunk(chunk = chunk)
                         yield fileChunk
                         chunk = file.read(chunkSize)

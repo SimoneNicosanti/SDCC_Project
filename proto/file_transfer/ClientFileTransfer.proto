@@ -10,6 +10,7 @@ service FileService {
     // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
 }
 
+
 enum ErrorCodes {
     OK = 0;
     S3_ERROR = 9;

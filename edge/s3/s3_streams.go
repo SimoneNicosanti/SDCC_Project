@@ -28,10 +28,10 @@ func (u *UploadStream) Read(p []byte) (n int, err error) {
 
 	if len(u.ResidualChunk) > 0 {
 		// Parte del chunk precedente deve essere consumata
-		log.Println("Letto da Residuo")
+		log.Println("[*UPLOAD*] Letto da Residuo")
 		fileChunk = u.ResidualChunk
 	} else {
-		log.Println("Letto da Canale")
+		log.Println("[*UPLOAD*] Letto da Canale")
 		chunkMessage, err := u.ClientStream.Recv()
 		if err == io.EOF {
 			return 0, io.EOF

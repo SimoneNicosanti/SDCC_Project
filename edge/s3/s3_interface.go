@@ -16,15 +16,11 @@ import (
 
 func SendToS3(fileName string, uploadStreamReader UploadStream) error {
 
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
-	}))
+	sess := getSession()
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
-		d.PartSize = 10 * 1024 * 1024
+		d.PartSize = 5 * 1024 * 1024
 		d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 	})
-
 	_, err := uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), // nome bucket
 		Key:    &fileName,                                                  //percorso file da caricare
@@ -43,11 +39,7 @@ func SendToS3(fileName string, uploadStreamReader UploadStream) error {
 func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter DownloadStream) error {
 	// 1] Open connection to S3
 	// 2] retrieve chunk by chunk (send to client + save in local)
-
-	sess := session.Must(session.NewSession(&aws.Config{
-		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewSharedCredentials("/home/.aws/credentials", ""),
-	}))
+	sess := getSession()
 
 	// TODO Capire perché fa come cazzo gli pare
 	// Crea un downloader con la dimensione delle parti configurata
@@ -77,5 +69,17 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 	}
 
 	return nil
+}
 
+func getSession() *session.Session {
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewSharedCredentials("/aws/credentials", ""),
+	}))
+	return sess
+}
+
+func getS3ChunkSize(chunkTypeStr string) int64 {
+	envVariable := utils.GetIntegerEnvironmentVariable(chunkTypeStr)
+	return int64(envVariable)
 }
