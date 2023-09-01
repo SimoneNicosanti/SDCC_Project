@@ -1,16 +1,7 @@
 package server
 
 import (
-	"crypto/sha256"
 	"edge/proto/client"
-	"fmt"
-	"log"
-	"os"
-	"strings"
-	"syscall"
-
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 type FileServiceServer struct {
