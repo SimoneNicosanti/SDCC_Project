@@ -1,3 +1,2 @@
-docker compose exec edge protoc -I=/proto --go_out=/src/proto --go-grpc_out=/src/proto /proto/ClientFileTransfer.proto
-docker compose exec edge protoc -I=/proto --go_out=/src/proto --go-grpc_out=/src/proto /proto/EdgeFileTransfer.proto
-docker compose exec client python -m grpc_tools.protoc -I/proto --python_out=/src/proto --pyi_out=/src/proto --grpc_python_out=/src/proto /proto/file_transfer/ClientFileTransfer.proto /proto/login/Login.proto
+docker compose exec edge protoc -I=/proto --go_out=/src/proto --go-grpc_out=/src/proto /proto/FileTransfer.proto
+docker compose exec client python -m grpc_tools.protoc -I/proto --python_out=/src/proto --pyi_out=/src/proto --grpc_python_out=/src/proto /proto/file_transfer/FileTransfer.proto /proto/login/Login.proto

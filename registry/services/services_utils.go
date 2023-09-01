@@ -1,10 +1,12 @@
 package services
 
 import (
+	"fmt"
 	"math/rand"
 	"net/rpc"
 	"registry/utils"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -51,4 +53,17 @@ func existsEdge() bool {
 	RAND_THR, err := strconv.ParseFloat(utils.GetEnvironmentVariable("RAND_THR"), 64)
 	utils.ExitOnError("Impossibile fare il parsing di RAND_THR", err)
 	return randomNumber > RAND_THR
+}
+
+func PrintGraph(peerMap map[EdgePeer]map[EdgePeer]byte) {
+	for node, neighbors := range peerMap {
+		fmt.Printf("%s --> [", node)
+
+		neighborList := make([]string, 0)
+		for neighbor := range neighbors {
+			neighborList = append(neighborList, strings.Split((strings.Split(neighbor.PeerAddr, ":"))[0], ".")[3])
+		}
+
+		fmt.Printf("%s]\n", strings.Join(neighborList, ", "))
+	}
 }

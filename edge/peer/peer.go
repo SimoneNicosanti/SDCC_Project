@@ -1,7 +1,8 @@
 package peer
 
 import (
-	"edge/proto/edge"
+	"edge/cache"
+	"edge/proto/client"
 	"edge/utils"
 	"fmt"
 	"log"
@@ -25,7 +26,7 @@ import (
 */
 
 var selfPeer EdgePeer
-var selfEdgeServer EdgeFileServiceServer
+var peerFileServer PeerFileServer
 var registryClient *rpc.Client
 
 func ActAsPeer() {
@@ -34,15 +35,15 @@ func ActAsPeer() {
 	ipAddr, err := utils.GetMyIPAddr()
 	utils.ExitOnError("", err)
 
-	setupBloomFilterStruct()
-
-	registerGRPC()
+	//setupBloomFilterStruct()
 
 	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
 	errorMessage, err := registerServiceForEdge(ipAddr, edgePeerPtr)
 	utils.ExitOnError(errorMessage, err)
 	log.Println("[*OK*] -> Servizio registrato")
+
+	registerGRPC()
 
 	//Connessione al server Registry per l'inserimento nella rete
 	adj := new(map[EdgePeer]byte)
@@ -74,11 +75,12 @@ func registerGRPC() {
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 
-	grpcServer := grpc.NewServer()
-	selfEdgeServer = EdgeFileServiceServer{addr: serverEndpoint}
-	edge.RegisterEdgeFileServiceServer(grpcServer, &selfEdgeServer)
+	peerFileServer.IpAddr = serverEndpoint
 
-	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
+	grpcServer := grpc.NewServer()
+	client.RegisterEdgeFileServiceServer(grpcServer, &peerFileServer)
+
+	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", selfPeer.PeerAddr)
 	go grpcServer.Serve(lis)
 }
 
@@ -135,7 +137,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 	// Thread che ascolta eventuali richieste arrivate
 	go http.Serve(peerListener, nil)
 
-	selfPeer = EdgePeer{edgePeerPtr.PeerAddr}
+	selfPeer = EdgePeer{PeerAddr: edgePeerPtr.PeerAddr}
 
 	return "", err
 }
@@ -151,31 +153,31 @@ func temporizedNotifyBloomFilters() {
 func notifyBloomFilters() {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
-	selfBloomFilter.mutex.RLock()
+	cache.SelfBloomFilter.Mutex.RLock()
 
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
-		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: selfBloomFilter.filter}
+		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: cache.SelfBloomFilter.Filter}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
 			log.Println("[*ERROR*] -> Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
 		}
 	}
 
-	selfBloomFilter.mutex.RUnlock()
+	cache.SelfBloomFilter.Mutex.RUnlock()
 	adjacentsMap.filtersMutex.RUnlock()
 	adjacentsMap.connsMutex.RUnlock()
 }
 
 // TODO Controllar bene sincronizzazione e alternanza semafori
 func counterNotifyBloomFilters() {
-	selfBloomFilter.mutex.RLock()
+	cache.SelfBloomFilter.Mutex.RLock()
 
-	changesNum := selfBloomFilter.changes
+	changesNum := cache.SelfBloomFilter.Changes
 	if changesNum > utils.GetIntegerEnvironmentVariable("FILTER_CHANGES_THR") {
 		notifyBloomFilters()
 	}
 
-	selfBloomFilter.mutex.RUnlock()
+	cache.SelfBloomFilter.Mutex.RUnlock()
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, error) {

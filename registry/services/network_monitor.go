@@ -22,6 +22,7 @@ func checkForDeadPeers() {
 				//Il peer viene considerato caduto e viene rimosso dalla rete
 				log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr)
 				removeDeadNode(edgePeer)
+				log.Println(graphMap.peerMap)
 			}
 		}
 		heartbeatMap.lastChecked = time.Now()
@@ -44,8 +45,6 @@ func checkForDeadPeers() {
 		connectionMap.mutex.Unlock()
 		graphMap.mutex.Unlock()
 		heartbeatMap.mutex.Unlock()
-
-		log.Println("Controllata presenza di Peer morti")
 	}
 
 }
@@ -74,7 +73,6 @@ func monitorNetwork() {
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
 		solveNetworkPartitions()
-		log.Println("Controllata presenza di Partizioni")
 	}
 }
 
@@ -88,7 +86,9 @@ func solveNetworkPartitions() {
 	connectedComponents := FindConnectedComponents(graphMap.peerMap)
 
 	if len(connectedComponents) > 1 {
+		log.Printf("Trovata partizione di rete\n\n")
 		unifyNetwork(connectedComponents)
+		log.Println(graphMap.peerMap)
 	}
 
 }
@@ -152,8 +152,8 @@ func findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
 		}
 		if thereIsEdge {
 			neighboursList[peer] = 0
+			createdEdge = true
 		}
 	}
-	log.Println(neighboursList)
 	return neighboursList
 }

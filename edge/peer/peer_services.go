@@ -1,7 +1,7 @@
 package peer
 
 import (
-	"edge/proto/edge"
+	"edge/proto/client"
 	"edge/utils"
 	"fmt"
 	"io"
@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type EdgeFileServiceServer struct {
-	edge.UnimplementedEdgeFileServiceServer
-	addr string
-}
-
 type EdgePeer struct {
 	PeerAddr string
+}
+
+type PeerFileServer struct {
+	client.UnimplementedEdgeFileServiceServer
+	IpAddr string
 }
 
 // TODO Togliere il ping?? Ha sempre ragione il registry: potrebbe funzionare anche con, ma la logica rimane abbastanza simile
@@ -43,7 +43,8 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	return err
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *EdgeFileServiceServer) error {
+// TODO Aggiungere cache dei messaggi per non elaborare più volte lo stesso
+func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *PeerFileServer) error {
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
 	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
@@ -54,17 +55,17 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			return fmt.Errorf("[*ERROR*] File '%s' wasn't found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
-		*returnPtr = selfEdgeServer
+		*returnPtr = peerFileServer
 	} else { // Got an error :(
 		return err
 	}
 	return nil
 }
 
-func (s *EdgeFileServiceServer) DownloadFromEdge(fileDownloadRequest *edge.EdgeFileDownloadRequest, downloadStream edge.EdgeFileService_DownloadFromEdgeServer) error {
+func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownloadRequest, downloadStream client.EdgeFileService_DownloadFromEdgeServer) error {
 	localFile, err := os.Open("/files/" + fileDownloadRequest.FileName)
 	if err != nil {
-		return status.Error(codes.Code(edge.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
+		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
 	}
 	defer localFile.Close()
 	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE")
@@ -75,9 +76,9 @@ func (s *EdgeFileServiceServer) DownloadFromEdge(fileDownloadRequest *edge.EdgeF
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Code(edge.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] - Failed during read operation\r")
+			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] - Failed during read operation\r")
 		}
-		downloadStream.Send(&edge.EdgeFileChunk{Chunk: buffer[:n]})
+		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
 	}
 	return nil
 }

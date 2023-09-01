@@ -98,6 +98,7 @@ def execAction(ticket_id : str, requestType : Method, filename : str, stub : Fil
 
     return result
 
+# TODO Se il file non esiste non inoltrare la richiesta
 def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     try:
         # Otteniamo i chunks dalla chiamata gRPC

@@ -72,9 +72,10 @@ func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]by
 	for neighbour := range neighboursList {
 		graphMap.peerMap[neighbour][edgePeer] = 0
 	}
-	log.Println(graphMap.peerMap)
 
 	heartbeatMap.heartbeats[edgePeer] = time.Now()
+
+	log.Println(graphMap.peerMap)
 
 	*replyPtr = neighboursList
 	return nil
@@ -123,6 +124,7 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 		*replyPtr = heartbeatMessage.NeighboursList
 	}
 
+	// TODO Ragionare bene su dove mettere questo ciclo
 	for neighbourPeer := range heartbeatMessage.NeighboursList {
 		// Reinserisco il nodo nelle connessioni dei vicini
 		// Lo aggiungo solo se il nodo vicino è già presente nella mappa, altrimenti devo aspettare il suo heartbeat
@@ -134,7 +136,7 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 
 	heartbeatMap.heartbeats[edgePeer] = time.Now()
 
-	log.Println("Heartbeat From >> " + edgePeer.PeerAddr)
+	//log.Println("Heartbeat From >> " + edgePeer.PeerAddr)
 
 	return nil
 }

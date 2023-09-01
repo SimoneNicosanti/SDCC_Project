@@ -3,6 +3,7 @@ package peer
 import (
 	"edge/utils"
 	"errors"
+	"fmt"
 	"log"
 	"net/rpc"
 	"time"
@@ -97,8 +98,10 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 }
 
 func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
+	fmt.Println("Connecting to " + peer.PeerAddr)
 	client, err := ConnectToNode(peer.PeerAddr)
-	//Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
+	fmt.Println("Connecting to " + peer.PeerAddr)
+	// Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 	// il peer corrente lo ignorerà.
 	if err != nil {
 		log.Println("[*ERROR*] -> Impossibile stabilire la connessione con " + peer.PeerAddr)
@@ -109,8 +112,6 @@ func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	adjacentsMap.connsMutex.Lock()
 	adjacentsMap.peerConns[peer] = client
 	defer adjacentsMap.connsMutex.Unlock()
-
-	addConnection(peer, client)
 
 	return client, nil
 }
