@@ -58,6 +58,8 @@ func ActAsPeer() {
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
 	log.Println("[*HEARTBEAT*] -> iniziato")
 
+	//TODO Far partire il meccanismo di ping e di notifica dei filtr
+
 	//Connessione a tutti i vicini
 	connectAndNotifyYourAdjacent(*adj)
 	log.Println("[*NETWORK*] -> Connessione con tutti i vicini completata")
@@ -153,31 +155,18 @@ func temporizedNotifyBloomFilters() {
 func notifyBloomFilters() {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
-	cache.SelfBloomFilter.Mutex.RLock()
 
+	bloomFilter := cache.SelfCache.ComputeBloomFilter()
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
-		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: cache.SelfBloomFilter.Filter}
+		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: bloomFilter}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
 			log.Println("[*ERROR*] -> Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
 		}
 	}
 
-	cache.SelfBloomFilter.Mutex.RUnlock()
 	adjacentsMap.filtersMutex.RUnlock()
 	adjacentsMap.connsMutex.RUnlock()
-}
-
-// TODO Controllar bene sincronizzazione e alternanza semafori
-func counterNotifyBloomFilters() {
-	cache.SelfBloomFilter.Mutex.RLock()
-
-	changesNum := cache.SelfBloomFilter.Changes
-	if changesNum > utils.GetIntegerEnvironmentVariable("FILTER_CHANGES_THR") {
-		notifyBloomFilters()
-	}
-
-	cache.SelfBloomFilter.Mutex.RUnlock()
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, error) {

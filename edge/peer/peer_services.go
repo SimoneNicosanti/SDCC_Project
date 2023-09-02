@@ -52,7 +52,7 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			NeighboursFileLookup(fileRequestMessage)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
-			return fmt.Errorf("[*ERROR*] File '%s' wasn't found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
+			return fmt.Errorf("[*ERROR*] File '%s' wasn't found. Request TTL zeroed, not propagating request", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
 		*returnPtr = peerFileServer

@@ -13,7 +13,7 @@ type AdjacentPeers struct {
 	connsMutex   sync.RWMutex
 	peerConns    map[EdgePeer](*rpc.Client)
 	filtersMutex sync.RWMutex
-	filterMap    map[EdgePeer](*bloom.CountingBloomFilter)
+	filterMap    map[EdgePeer](*bloom.StableBloomFilter)
 }
 
 type HeartbeatMessage struct {
@@ -23,7 +23,7 @@ type HeartbeatMessage struct {
 
 type BloomFilterMessage struct {
 	EdgePeer    EdgePeer
-	BloomFilter *bloom.CountingBloomFilter
+	BloomFilter *bloom.StableBloomFilter
 }
 
 type FileRequestMessage struct {
@@ -35,7 +35,7 @@ var adjacentsMap = AdjacentPeers{
 	sync.RWMutex{},
 	map[EdgePeer]*rpc.Client{},
 	sync.RWMutex{},
-	map[EdgePeer]*bloom.CountingBloomFilter{},
+	map[EdgePeer]*bloom.StableBloomFilter{},
 }
 
 // Comunica ai tuoi vicini di aggiungerti come loro vicino
@@ -55,7 +55,7 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 func ConnectToNode(addr string) (*rpc.Client, error) {
 	client, err := rpc.DialHTTP("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("Errore Dial HTTP")
+		return nil, fmt.Errorf("errore Dial HTTP")
 	}
 	return client, nil
 }

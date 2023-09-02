@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	bloom "github.com/tylertreat/BoomFilters"
 )
 
 /*
@@ -17,7 +19,6 @@ import (
  abbiamo in cache, allora lo spostiamo di nuovo in fondo alla coda (come se fosse appena arrivato). In questo modo i file popolari non sono svantaggiati e
  difficilmente verrano buttati fuori dalla coda.
 - Pochi file grandi oppure tanti piccoli in cache? -> Stabilire quando un file va salvato in cache tramite una threshold.
--
 */
 
 type File struct {
@@ -31,37 +32,59 @@ type Cache struct {
 	mutex        sync.RWMutex //TODO decidere chi prende i lock (se le singole funzioni o il chiamante)
 }
 
-var cache Cache = Cache{cachingQueue: []File{}, cachingMap: map[string]byte{}, mutex: sync.RWMutex{}}
+var SelfCache Cache = Cache{
+	cachingQueue: []File{},
+	cachingMap:   map[string]byte{},
+	mutex:        sync.RWMutex{}}
 
 //TODO riportare tutto sulla cache vera
-//TODO aggiornare filtri di Bloom ogni TOT operazioni
 
-func (cache *Cache) InsertFileInQueue(file_name string, file_size int) {
+func (cache *Cache) InsertFileInCache(file_name string, file_size int) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
 	_, alreadyExists := cache.cachingMap[file_name]
 	if alreadyExists {
 		//Se esiste già, reinserisci il file in coda, ovvero eliminalo e reinseriscilo
-		cache.RemoveFileInQueue(file_name)
-		cache.InsertFileInQueue(file_name, file_size)
+		cache.RemoveFileInCache(file_name)
+		cache.InsertFileInCache(file_name, file_size)
+		return
 	} else {
 		if checkFileSize(file_size) {
-			//check sulla memoria disponibile
-			if retrieveFreeMemorySize() < file_size {
-				//elimino ultimo elemento nella queue
-				cache.RemoveFileInQueue(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
+			// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
+			//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
+			// piuttosto che eliminarli e basta
+			for {
+				//check sulla memoria disponibile
+				if retrieveFreeMemorySize() < file_size {
+					//elimino ultimo elemento nella queue
+					//TODO eliminare anche il file -> altrimenti non si libererà mai lo spazio
+					cache.RemoveFileInCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
+				} else {
+					break
+				}
 			}
+
+			// Inserimento del file nella mappa
 			cache.cachingMap[file_name] = 0
+			// Inserimento del file nella coda
 			cache.cachingQueue = append(cache.cachingQueue, File{file_name, file_size})
 		}
 	}
 }
 
-func (cache *Cache) RemoveFileInQueue(file_name string) {
+func (cache *Cache) RemoveFileInCache(file_name string) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
 	index, err := cache.getIndex(file_name)
 	if err != nil {
 		//TODO manage error
-
+		utils.ExitOnError(err.Error(), err)
 	}
+	// Eliminazione file dalla mappa
 	delete(cache.cachingMap, file_name)
+	// Eliminazione file dalla coda
 	cache.cachingQueue = append(cache.cachingQueue[:index], cache.cachingQueue[index+1:]...)
 }
 
@@ -70,6 +93,7 @@ func retrieveFreeMemorySize() int {
 	err := syscall.Statfs("/files", statPtr)
 	if err != nil {
 		//TODO manage error
+		log.Println(err.Error())
 	}
 	return int(statPtr.Bfree * uint64(statPtr.Bsize))
 }
@@ -93,9 +117,23 @@ func (cache *Cache) getIndex(file_name string) (int, error) {
 	return -1, errors.New("c'è inconsistenza tra la coda e la mappa della cache. Potrebbe essere dovuto ad accessi concorrenti non gestiti?")
 }
 
+func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
+	cache.mutex.RLock()
+	defer cache.mutex.RUnlock()
+
+	newFilter := bloom.NewDefaultStableBloomFilter(
+		utils.GetUintEnvironmentVariable("FILTER_N"),
+		utils.GetFloatEnvironmentVariable("FALSE_POSITIVE_RATE"))
+	for _, file := range cache.cachingQueue {
+		newFilter.Add([]byte(file.file_name))
+	}
+
+	return newFilter
+}
+
 // TODO Potrebbero esserci dei problemi di blocco nel caso in cui il thread consumer vada in errore: il channel si satura e non si procede
-// Potrebbe diventare un metodo di cache
 func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
+
 	localFile, err := os.Create("/files/" + fileName)
 	if err != nil {
 		return fmt.Errorf("[*ERROR*] - File creation failed")
