@@ -51,7 +51,6 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	uploadStreamReader := s3_boundary.UploadStream{ClientStream: uploadStream, FileName: file_name, FileChannel: fileChannel, ResidualChunk: make([]byte, 0)}
 
 	// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
-
 	go cache.GetCache().InsertFileInCache(fileChannel, file_name, file_size)
 	//go cache.WriteChunksOnFile(fileChannel, file_name)
 	err = s3_boundary.SendToS3(file_name, uploadStreamReader)
@@ -95,6 +94,8 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel}
 			err = s3_boundary.SendFromS3(requestMessage, s3DownloadStream)
 			if err != nil {
+				errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+				fileChannel <- errorHash[:]
 				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
 			}
 		}
@@ -103,7 +104,6 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 		return sendFromLocalFileStream(requestMessage, downloadStream)
 	} else { //Got an error
 		// TODO Aggiungere errore per path sbagliato
-
 	}
 	log.Println("[*SUCCESS*] -> Invio del file '" + requestMessage.FileName + "' Completata")
 	return nil
@@ -114,11 +114,15 @@ func sendFromOtherEdge(ownerEdge peer.EdgePeer, requestMessage *client.FileDownl
 	// 2] retrieve chunk by chunk (send to client + save in local)
 	conn, err := grpc.Dial(ownerEdge.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		fileChannel <- errorHash[:]
 		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to Dial edge via gRPC")
 	}
 	grpcClient := client.NewEdgeFileServiceClient(conn)
 	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context.Background(), &client.FileDownloadRequest{TicketId: "", FileName: requestMessage.FileName})
 	if err != nil {
+		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+		fileChannel <- errorHash[:]
 		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to setup edge download stream via gRPC")
 	}
 

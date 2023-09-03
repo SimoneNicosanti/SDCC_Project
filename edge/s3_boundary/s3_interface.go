@@ -46,9 +46,9 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 	}
 
 	if fileSize > int64(utils.GetIntegerEnvironmentVariable("CACHE_FILE_MAX_SIZE")) {
-		// Rispondi solo al file ma non metti in Cache
+		//TODO Rispondi solo al file ma non metti in Cache
 	} else {
-		// Metti in cache
+		//TODO Metti in cache
 	}
 
 	// TODO Capire perché fa come cazzo gli pare
@@ -71,8 +71,6 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 		},
 	)
 	if err != nil {
-		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-		downloadStreamWriter.FileChannel <- errorHash[:]
 		fmt.Println("Errore nel download:", err)
 		return err
 	}

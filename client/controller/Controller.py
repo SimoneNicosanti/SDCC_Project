@@ -14,7 +14,9 @@ sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
-    count = 0
+    count = 0 
+    if requestType == Method.PUT and not os.path.exists("/files/" + fileName):
+        raise MyErrors.FileNotFound("Il file da caricare non esiste in locale.")
 
     # Otteniamo l'indirizzo del peer da contattare
     while(True):
@@ -38,8 +40,11 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
         channel = grpc.insecure_channel(ticket.peer_addr)
         stub = FileServiceStub(channel)
     except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
         if e.code().value[0] == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il server fallita")
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
         raise e
     # Esecuzione dell'azione
     result = execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)
@@ -48,38 +53,23 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
     return result
 
-def callback(ch : BlockingChannel, method, properties, body):
-    global data 
-    if method == None:
-        data = None
-    else:
-        data = json.loads(body)
-    
-    ch.stop_consuming()
-
-
 def getTicket() -> Ticket:
 
     queue_name = os.environ.get("QUEUE_NAME")
     channel : BlockingChannel = RabbitSingleton.getRabbitChannel()
     
+    _, _, body = channel.basic_get(queue=queue_name, auto_ack=True)
     
-    channel.basic_consume(queue = queue_name, on_message_callback = callback, auto_ack = True)
-    # All'interno della callback viene scritto il contenuto del messaggio in 'data'
-    # global sem
-    # sem.acquire()
-    channel.start_consuming()
-    global data
-    ticket = None
-    if data != None:
-        serverEndpoint = data['ServerEndpoint']
-        ticket_id = data['Id']
-        ticket = Ticket(serverEndpoint, ticket_id)
-        Debug.debug(f"Acquired ticket '{ticket_id}' on connection {ticket.peer_addr}'")
-    # Dopo aver creato il Ticket possiamo rilasciare il semaforo
-    # sem.release()
+    if body == None:
+        raise MyErrors.NoServerAvailable("Nessun server è pronto a soddisfare la richiesta.")
 
+    data = json.loads(body)
+    serverEndpoint = data['ServerEndpoint']
+    ticket_id = data['Id']
+    ticket = Ticket(serverEndpoint, ticket_id)
+    Debug.debug(f"Acquired ticket '{ticket_id}' on connection {ticket.peer_addr}'")
     return ticket
+
 
 def execAction(ticket_id : str, requestType : Method, filename : str, stub : FileServiceStub) -> bool:
 
@@ -108,6 +98,9 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     except StopIteration as e:
         raise MyErrors.RequestFailedException("Errore durante la lettura dei chunks ricevuti.")
     except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
@@ -116,15 +109,12 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
-        print(e.code())
-        print(e.code().value)
-        print(e.details())
         raise e
 
 
 def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     response : Response
-    
+       
     try:
         # Otteniamo la size del file da inviare
         file_size = os.path.getsize(filename = "/files/" + filename)
@@ -139,12 +129,17 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     except IOError as e:
             raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
     except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
         if e.code().value[0] == ErrorCodes.INVALID_TICKET:
             raise MyErrors.InvalidTicketException("Ticket usato non valido.")
-        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR or e.code().value[0] == ErrorCodes.S3_ERROR:
+        if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
+        if e.code().value[0] == ErrorCodes.S3_ERROR:
+            raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta. Errore durante l'interazione con S3.")
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
         raise e

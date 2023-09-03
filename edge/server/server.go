@@ -31,13 +31,13 @@ var serverEndpoint string
 var rabbitChannel *amqp.Channel
 
 func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	encoded, err := json.Marshal(ticket)
 	if err != nil {
 		log.Println("[*ERROR*] -> Error in marshaling Ticket for RabbitMQ")
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	err = channel.PublishWithContext(ctx, "", utils.GetEnvironmentVariable("QUEUE_NAME"), false, false, amqp.Publishing{
 		ContentType: "text/plain",
 		Body:        encoded,

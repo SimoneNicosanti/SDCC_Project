@@ -168,29 +168,38 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 // TODO Potrebbero esserci dei problemi di blocco nel caso in cui il thread consumer vada in errore: il channel si satura e non si procede
 func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
 
-	localFile, err := os.Create("/files/" + fileName)
-	if err != nil {
-		return fmt.Errorf("[*ERROR*] - File creation failed")
-	}
-	syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
-	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
-	defer localFile.Close()
+	var localFile *os.File
+	fileCreated := false
 
 	errorHashString := fmt.Sprintf("%x", sha256.Sum256([]byte("[*ERROR*]")))
 	for chunk := range fileChannel {
+		if !fileCreated {
+			fileCreated = true
+			localFile, err := os.Create("/files/" + fileName)
+			if err != nil {
+				return fmt.Errorf("[*ERROR*] - File creation failed")
+			}
+			syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
+			defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
+			defer localFile.Close()
+		}
+
 		chunkString := fmt.Sprintf("%x", chunk)
 		if strings.Compare(chunkString, errorHashString) == 0 {
 			log.Println("[*ABORT*] -> Error occurred, removing file...")
 			return os.Remove("/files/" + fileName)
 		}
-		_, err = localFile.Write(chunk)
+		_, err := localFile.Write(chunk)
 		if err != nil {
 			os.Remove("/files/" + fileName)
 			log.Printf("[*ERROR*] -> Impossibile inserire il file '%s' in cache\n", fileName)
 			return fmt.Errorf("[*ERROR*] -> Impossibile inserire il file in cache")
 		}
 	}
-	log.Printf("[*SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
-
+	if fileCreated {
+		log.Printf("[*SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
+	} else {
+		log.Printf("[*FAILURE*] - Impossibile caricare localmente il File '%s'\r\n", fileName)
+	}
 	return nil
 }

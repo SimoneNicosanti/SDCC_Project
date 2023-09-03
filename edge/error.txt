@@ -1,0 +1,36 @@
+2023/09/03 15:52:09 [*OK*] -> Servizio registrato
+2023/09/03 15:52:09 [*GRPC SERVER STARTED*] -> endpoint : '172.18.0.5:45659'
+2023/09/03 15:52:09 [*OK*] -> Servizio registrato su server Registry
+2023/09/03 15:52:09 map[{172.18.0.7:38343}:0]
+2023/09/03 15:52:09 [*HEARTBEAT*] -> iniziato
+Connecting to 172.18.0.7:38343
+Connecting to 172.18.0.7:38343
+2023/09/03 15:52:09 [*CONN_SUCCESS*] -> Connessione con 172.18.0.7:38343 effettuata
+2023/09/03 15:52:09 impossibile stabilire connessione con il nuovo vicino
+2023/09/03 15:52:09 [*NETWORK*] -> Connessione con tutti i vicini completata
+2023/09/03 15:52:09 [*GRPC SERVER STARTED*] -> endpoint : '172.18.0.5:56916'
+2023/09/03 15:52:09 [*TICKET*] -> generated ticket with randomID : '3KIDnOCDm5AHMGd2'
+2023/09/03 15:52:09 [*TICKET*] -> published ticket with randomID : '3KIDnOCDm5AHMGd2'
+2023/09/03 15:52:25 [*TICKET*] -> generated ticket with randomID : 'rdWg8Wj_O76pK8HI'
+2023/09/03 15:52:25 [*TICKET*] -> published ticket with randomID : 'rdWg8Wj_O76pK8HI'
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x8 pc=0x75eedc]
+
+goroutine 97 [running]:
+github.com/tylertreat/BoomFilters.(*StableBloomFilter).Test(0x0, {0xc00051c080?, 0xc0001441f0?, 0x10?})
+        /go/pkg/mod/github.com/tylertreat/!boom!filters@v0.0.0-20210315201527-1a82519a3e43/stable.go:137 +0x1c
+edge/peer.NeighboursFileLookup({{0xc00051c038?, 0xb?}, 0x10bcf80?})
+        /src/peer/peer.go:183 +0x28b
+edge/server.(*FileServiceServer).Download(0xc0004640f0?, 0xc000470000, {0x10c8e18, 0xc0005021d0})
+        /src/server/server_services.go:82 +0x3d4
+edge/proto/client._FileService_Download_Handler({0xc5bde0?, 0x16a45c0}, {0x10c72f8, 0xc0004640f0})
+        /src/proto/client/FileTransfer_grpc.pb.go:147 +0xd0
+google.golang.org/grpc.(*Server).processStreamingRPC(0xc000468000, {0x10c9f58, 0xc0004cf860}, 0xc0000e6000, 0xc000196c90, 0x1666fa0, 0x0)
+        /go/pkg/mod/google.golang.org/grpc@v1.57.0/server.go:1654 +0x1328
+google.golang.org/grpc.(*Server).handleStream(0xc000468000, {0x10c9f58, 0xc0004cf860}, 0xc0000e6000, 0x0)
+        /go/pkg/mod/google.golang.org/grpc@v1.57.0/server.go:1741 +0x9a6
+google.golang.org/grpc.(*Server).serveStreams.func1.1()
+        /go/pkg/mod/google.golang.org/grpc@v1.57.0/server.go:982 +0x8d
+created by google.golang.org/grpc.(*Server).serveStreams.func1 in goroutine 16
+        /go/pkg/mod/google.golang.org/grpc@v1.57.0/server.go:980 +0x165
+exit status 2

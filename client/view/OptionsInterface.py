@@ -45,6 +45,12 @@ def main():
             except MyErrors.FailedToOpenException as e:
                 colored_print("Impossibile aprire il file. Assicurati che il file esista.", Color.RED)
                 Debug.errorDebug(e.message)
+            except MyErrors.NoServerAvailable as e:
+                colored_print("Nessun server è disponibile. Ritenta più tardi.", Color.RED)
+                Debug.errorDebug(e.message)
+            except MyErrors.FileNotFound as e:
+                colored_print("Il file non esiste in locale.", Color.RED)
+                Debug.errorDebug(e.message)
         else:
             colored_print("Azione non valida. Riprova.", Color.RED)
 
