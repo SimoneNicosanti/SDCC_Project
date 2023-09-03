@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/net/context"
@@ -29,7 +30,12 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request No Ticket")
 	}
 	ticketID := md.Get("ticket_id")[0]
-	fileName := md.Get("file_name")[0]
+	file_name := md.Get("file_name")[0]
+	file_size, err := strconv.Atoi(md.Get("file_size")[0])
+	if err != nil {
+		log.Println("Impossibile effettuare il cast della size. SIZE = " + md.Get("file_size")[0])
+	}
+
 	// TODO Vedere come gestire grandezza dei file --> Passiamo dimensione del file nel context
 
 	isValidRequest := checkTicket(ticketID)
@@ -42,16 +48,18 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 	defer close(fileChannel)
 
-	uploadStreamReader := s3_boundary.UploadStream{ClientStream: uploadStream, FileName: fileName, FileChannel: fileChannel, ResidualChunk: make([]byte, 0)}
+	uploadStreamReader := s3_boundary.UploadStream{ClientStream: uploadStream, FileName: file_name, FileChannel: fileChannel, ResidualChunk: make([]byte, 0)}
 
 	// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
-	go cache.WriteChunksOnFile(fileChannel, fileName)
-	err := s3_boundary.SendToS3(fileName, uploadStreamReader)
+
+	go cache.GetCache().InsertFileInCache(fileChannel, file_name, file_size)
+	//go cache.WriteChunksOnFile(fileChannel, file_name)
+	err = s3_boundary.SendToS3(file_name, uploadStreamReader)
 	if err != nil {
 		log.Println("[*ERROR*] - File Upload to S3 encountered some error")
 		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), "[*ERROR*] - File Upload to S3 encountered some error")
 	}
-	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [TICKET_ID: %s]\r\n", fileName, ticketID)
+	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [TICKET_ID: %s]\r\n", file_name, ticketID)
 	response := client.Response{TicketId: ticketID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {

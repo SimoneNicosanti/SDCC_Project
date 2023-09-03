@@ -156,7 +156,7 @@ func notifyBloomFilters() {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
-	bloomFilter := cache.SelfCache.ComputeBloomFilter()
+	bloomFilter := cache.GetCache().ComputeBloomFilter()
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
 		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: bloomFilter}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))

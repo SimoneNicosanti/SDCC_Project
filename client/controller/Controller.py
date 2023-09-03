@@ -126,13 +126,15 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     response : Response
     
     try:
+        # Otteniamo la size del file da inviare
+        file_size = os.path.getsize(filename = "/files/" + filename)
         # Dividiamo il file in chunks
         #with open("/files/" + filename, "rb") as file :
         chunks = FileService().getChunks(filename = filename)
         # Effettuiamo la chiamata gRPC
         response = stub.Upload(
             chunks,
-            metadata = (('file_name', filename), ('ticket_id', ticket_id), )
+            metadata = (('file_name', filename), ('ticket_id', ticket_id), ('file_size', str(file_size)), )
         )
     except IOError as e:
             raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")

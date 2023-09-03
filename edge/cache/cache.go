@@ -32,39 +32,51 @@ type Cache struct {
 	mutex        sync.RWMutex //TODO decidere chi prende i lock (se le singole funzioni o il chiamante)
 }
 
-var SelfCache Cache = Cache{
+var selfCache Cache = Cache{
 	cachingQueue: []File{},
 	cachingMap:   map[string]byte{},
 	mutex:        sync.RWMutex{}}
 
+func GetCache() *Cache {
+	return &selfCache
+}
+
 //TODO riportare tutto sulla cache vera
 
-func (cache *Cache) InsertFileInCache(file_name string, file_size int) {
+func (cache *Cache) InsertFileInCache(fileChannel chan []byte, file_name string, file_size int) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
+	cache.insertFileInCache(fileChannel, file_name, file_size, true)
+}
+
+func (cache *Cache) RemoveFileInCache(file_name string) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	cache.removeFileInCache(file_name, true)
+}
+
+func (cache *Cache) insertFileInCache(fileChannel chan []byte, file_name string, file_size int, writeFile bool) {
+	//TODO gestire il problema per cui i file sono identificati soltanto dal nome
+
 	_, alreadyExists := cache.cachingMap[file_name]
 	if alreadyExists {
-		//Se esiste già, reinserisci il file in coda, ovvero eliminalo e reinseriscilo
-		cache.RemoveFileInCache(file_name)
-		cache.InsertFileInCache(file_name, file_size)
+		// Se esiste già, reinserisci il file in coda, ovvero eliminalo e reinseriscilo
+		cache.removeFileInCache(file_name, false)
+		cache.insertFileInCache(fileChannel, file_name, file_size, false)
 		return
 	} else {
 		if checkFileSize(file_size) {
-			// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
-			//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
-			// piuttosto che eliminarli e basta
-			for {
-				//check sulla memoria disponibile
-				if retrieveFreeMemorySize() < file_size {
-					//elimino ultimo elemento nella queue
-					//TODO eliminare anche il file -> altrimenti non si libererà mai lo spazio
-					cache.RemoveFileInCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
-				} else {
-					break
+			freeMemoryForInsert(file_size, cache)
+			if writeFile {
+				err := WriteChunksOnFile(fileChannel, file_name)
+				if err != nil {
+					//TODO gestione errori
+					log.Println(err.Error())
+					return
 				}
 			}
-
 			// Inserimento del file nella mappa
 			cache.cachingMap[file_name] = 0
 			// Inserimento del file nella coda
@@ -73,14 +85,36 @@ func (cache *Cache) InsertFileInCache(file_name string, file_size int) {
 	}
 }
 
-func (cache *Cache) RemoveFileInCache(file_name string) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+func freeMemoryForInsert(file_size int, cache *Cache) {
+	// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
+	//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
+	// piuttosto che eliminare gli ultimi e basta
+	//check sulla memoria disponibile
+	//elimino ultimo elemento nella queue
+	for {
+		if retrieveFreeMemorySize() < file_size {
+			cache.removeFileInCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name, true)
+		} else {
+			break
+		}
+	}
+}
+
+func (cache *Cache) removeFileInCache(file_name string, removeFile bool) {
 
 	index, err := cache.getIndex(file_name)
 	if err != nil {
 		//TODO manage error
 		utils.ExitOnError(err.Error(), err)
+	}
+
+	// Eliminazione del file dal filesystem
+	if removeFile {
+		err = os.Remove("/files/" + file_name)
+		if err != nil {
+			fmt.Println("Errore durante l'eliminazione del file: ", err)
+			return
+		}
 	}
 	// Eliminazione file dalla mappa
 	delete(cache.cachingMap, file_name)

@@ -45,6 +45,8 @@ func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	if err != nil {
 		log.Println("[*ERROR*] -> Error in publishing ticket on RabbitMQ")
 		return err
+	} else {
+		log.Printf("[*TICKET*] -> published ticket with randomID : '%s'", ticket.Id)
 	}
 	return nil
 }
@@ -54,7 +56,6 @@ func publishNewTicket(oldTicketIndex int) error {
 	ticket := createTicket(oldTicketIndex)
 	for count < 3 {
 		err := attemptPublishTicket(rabbitChannel, ticket)
-
 		// La funzione ritorna al primo tentativo con successo
 		if err == nil {
 			return nil
@@ -71,7 +72,7 @@ func createTicket(oldTicketIndex int) Ticket {
 	utils.ExitOnError("[*ERROR*] -> Error generating random ID for ticket", err)
 	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
 	ticket := Ticket{serverEndpoint, randomID}
-	log.Printf("[*TICKET GENERATED*] -> randomID : '%s'", randomID)
+	log.Printf("[*TICKET*] -> generated ticket with randomID : '%s'", randomID)
 	return ticket
 }
 
