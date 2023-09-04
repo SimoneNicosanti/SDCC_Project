@@ -20,9 +20,9 @@ func checkForDeadPeers() {
 		for edgePeer, lastHeartbeatTime := range heartbeatMap.heartbeats {
 			if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > float64(HEARTBEAT_THR) {
 				//Il peer viene considerato caduto e viene rimosso dalla rete
-				log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr)
+				log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr + "\r\n")
 				removeDeadNode(edgePeer)
-				log.Println(graphMap.peerMap)
+				PrintGraph(graphMap.peerMap)
 			}
 		}
 		heartbeatMap.lastChecked = time.Now()
@@ -58,7 +58,7 @@ func removeDeadNode(deadPeer EdgePeer) {
 		delete(otherPeerConnections, deadPeer)
 	}
 
-	deadPeerConn := connectionMap.connections[deadPeer]
+	deadPeerConn, _ := connectionMap.connections[deadPeer]
 	deadPeerConn.Close()
 	delete(connectionMap.connections, deadPeer)
 
@@ -86,9 +86,9 @@ func solveNetworkPartitions() {
 	connectedComponents := FindConnectedComponents(graphMap.peerMap)
 
 	if len(connectedComponents) > 1 {
-		log.Printf("Trovata partizione di rete\n\n")
+		log.Printf("Trovata partizione di rete\r\n\r\n")
 		unifyNetwork(connectedComponents)
-		log.Println(graphMap.peerMap)
+		PrintGraph(graphMap.peerMap)
 	}
 
 }

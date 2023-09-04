@@ -41,7 +41,7 @@ func ActAsRegistry() {
 		utils.ExitOnError("Impossibile mettersi in ascolto sulla porta", err)
 	}
 
-	fmt.Println("Waiting for connections...")
+	fmt.Println("Waiting for connections...\r\n")
 
 	// go monitorNetwork()
 	go http.Serve(list, nil)
@@ -50,7 +50,7 @@ func ActAsRegistry() {
 }
 
 func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]byte) error {
-	log.Println("Entered " + edgePeer.PeerAddr)
+	log.Println("Entered " + edgePeer.PeerAddr + "\r\n")
 	graphMap.mutex.Lock()
 	connectionMap.mutex.Lock()
 	heartbeatMap.mutex.Lock()
@@ -75,19 +75,9 @@ func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]by
 
 	heartbeatMap.heartbeats[edgePeer] = time.Now()
 
-	log.Println(graphMap.peerMap)
+	PrintGraph(graphMap.peerMap)
 
 	*replyPtr = neighboursList
-	return nil
-}
-
-func (r *RegistryService) PeerExit(edgePeer EdgePeer, replyPtr *int) error {
-	/*
-		1. Rimuovere dalla lista di connessioni chiudendo la connessione
-		2. Rimuovere dalla struttura del grafo rimuovendo anche da tutte le mappe in cui compare
-		3. Comunicare uscita a tutti i peer che lo avevano in connessione, oppure è il nodo stesso che lo comunica ai suoi vicini ??)
-		4. Valutare partizioni di rete
-	*/
 	return nil
 }
 
@@ -103,40 +93,39 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 	_, ok := heartbeatMap.heartbeats[edgePeer]
 	if ok {
 		// Il peer è presente nel sistema --> Ritorno la lista dei suoi peer come la conosce il registry
-		// Notare che le liste sono coerenti perché l'unico caso in cui un peer è rimosso è quando l'heartbeat non è ricevuto per un certo tempo
 		*replyPtr = graphMap.peerMap[edgePeer]
 	} else {
 		// TODO Il peer non è presente nel sistema --> Era stato tolto oppure ho un recupero dal fallimento
 		// Aggiungere l'elenco dei peer nel graphMap
 		// Ritorno lo stesso di ciò che mi è stato inviato
-		log.Println("Trovato Peer Attivo >>> " + edgePeer.PeerAddr)
-		graphMap.peerMap[edgePeer] = heartbeatMessage.NeighboursList
+		log.Println("Trovato Peer Attivo >>> " + edgePeer.PeerAddr + "\r\n")
 
 		// Il nodo è ancora vivo (oppure l'ho ritrovato dopo il ripristino) quindi riapro la connessione e reimposto l'heartbeat
 		client, err := connectToNode(edgePeer)
 		if err != nil {
-			// TODO Stabilire cosa fare in caso di errore
-			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr)
-		} else {
-			connectionMap.connections[edgePeer] = client
+			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr + "\r\n")
+			return err
+		}
+
+		// TODO Ragionare bene su dove mettere questo ciclo
+		for neighbourPeer := range heartbeatMessage.NeighboursList {
+			// Reinserisco il nodo nelle connessioni dei vicini
+			// Lo aggiungo solo se il nodo vicino è già presente nella mappa, altrimenti devo aspettare il suo heartbeat
+			neighEdges, isInMap := graphMap.peerMap[neighbourPeer]
+			if isInMap {
+				neighEdges[edgePeer] = 0
+			}
 		}
 
 		*replyPtr = heartbeatMessage.NeighboursList
-	}
 
-	// TODO Ragionare bene su dove mettere questo ciclo
-	for neighbourPeer := range heartbeatMessage.NeighboursList {
-		// Reinserisco il nodo nelle connessioni dei vicini
-		// Lo aggiungo solo se il nodo vicino è già presente nella mappa, altrimenti devo aspettare il suo heartbeat
-		neighEdges, isInMap := graphMap.peerMap[neighbourPeer]
-		if isInMap {
-			neighEdges[edgePeer] = 0
-		}
+		connectionMap.connections[edgePeer] = client
+		graphMap.peerMap[edgePeer] = heartbeatMessage.NeighboursList
 	}
 
 	heartbeatMap.heartbeats[edgePeer] = time.Now()
 
-	//log.Println("Heartbeat From >> " + edgePeer.PeerAddr)
+	//log.Println("Heartbeat From >> " + edgePeer.PeerAddr + "\r\n")
 
 	return nil
 }

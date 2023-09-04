@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"net/rpc"
 	"registry/utils"
@@ -56,14 +57,16 @@ func existsEdge() bool {
 }
 
 func PrintGraph(peerMap map[EdgePeer]map[EdgePeer]byte) {
+	log.Println("\r\nCURRENT GRAPH:")
 	for node, neighbors := range peerMap {
-		fmt.Printf("%s --> [", node)
+		fmt.Printf("%s --> [", strings.Split(node.PeerAddr, ".")[3])
 
 		neighborList := make([]string, 0)
 		for neighbor := range neighbors {
-			neighborList = append(neighborList, strings.Split((strings.Split(neighbor.PeerAddr, ":"))[0], ".")[3])
+			neighborList = append(neighborList, strings.Split(neighbor.PeerAddr, ".")[3])
 		}
 
 		fmt.Printf("%s]\n", strings.Join(neighborList, ", "))
 	}
+	fmt.Printf("\r\n")
 }

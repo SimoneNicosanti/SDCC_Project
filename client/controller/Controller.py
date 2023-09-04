@@ -30,7 +30,7 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
             Debug.debug("Connessione con RabbitMQ caduta.")
             if count >= 3:
                 Debug.debug("Impossibile stabilire la connesione con la coda.")
-                raise MyErrors.ConnectionFailedException() #TODO creare eccezione apposita
+                raise MyErrors.UnableToConnectWithRabbit() #TODO creare eccezione apposita
             count+=1
             RabbitSingleton.startNewConnection()
             Debug.debug("Connessione con RabbitMQ ristabilità.")
@@ -44,7 +44,7 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
         print(e.code().value)
         print(e.details())
         if e.code().value[0] == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita. E' possibile che il server abbia avuto un guasto.")
         raise e
     # Esecuzione dell'azione
     result = execAction(ticket_id = ticket.ticket_id, requestType = requestType, filename = fileName, stub = stub)

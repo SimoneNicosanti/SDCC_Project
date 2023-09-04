@@ -90,14 +90,14 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel)
 
 		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
-			log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
-			s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel}
-			err = s3_boundary.SendFromS3(requestMessage, s3DownloadStream)
-			if err != nil {
-				errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-				fileChannel <- errorHash[:]
-				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
-			}
+			// log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
+			// s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel}
+			// err = s3_boundary.SendFromS3(requestMessage, s3DownloadStream)
+			// if err != nil {
+			// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
+			// 	fileChannel <- errorHash[:]
+			// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
+			// }
 		}
 	} else if err == nil { // ce l'ha l'edge corrente --> Leggi file e invia chunk
 		log.Printf("[*CACHE*] -> File '%s' found in cache", requestMessage.FileName)

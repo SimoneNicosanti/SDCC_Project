@@ -23,7 +23,7 @@ type HeartbeatMessage struct {
 
 type BloomFilterMessage struct {
 	EdgePeer    EdgePeer
-	BloomFilter *bloom.StableBloomFilter
+	BloomFilter []byte
 }
 
 type FileRequestMessage struct {
@@ -44,7 +44,7 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 
-	err := client.Call("EdgePeer.AddNeighbour", neighbourPeer.PeerAddr, nil)
+	err := client.Call("EdgePeer.AddNeighbour", neighbourPeer, nil)
 
 	if err != nil {
 		return errors.New("impossibile stabilire connessione con il nuovo vicino")

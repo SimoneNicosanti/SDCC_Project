@@ -59,6 +59,7 @@ func ActAsPeer() {
 	log.Println("[*HEARTBEAT*] -> iniziato")
 
 	//TODO Far partire il meccanismo di ping e di notifica dei filtr
+	go temporizedNotifyBloomFilters()
 
 	//Connessione a tutti i vicini
 	connectAndNotifyYourAdjacent(*adj)
@@ -94,8 +95,6 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 		if err != nil {
 			continue
 		}
-
-		log.Println("[*CONN_SUCCESS*] -> Connessione con " + adjPeer.PeerAddr + " effettuata")
 
 		err = CallAdjAddNeighbour(client, selfPeer)
 		//Se il vicino a cui ci si è connessi non ricambia la connessione, chiudo la connessione stabilita precedentemente.
@@ -152,21 +151,29 @@ func temporizedNotifyBloomFilters() {
 	}
 }
 
-func notifyBloomFilters() {
+func notifyBloomFilters() error {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
+	defer adjacentsMap.filtersMutex.RUnlock()
+	defer adjacentsMap.connsMutex.RUnlock()
+
 	bloomFilter := cache.GetCache().ComputeBloomFilter()
+	filterEncode, err := bloomFilter.GobEncode()
+	if err != nil {
+		return err
+	}
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
-		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: bloomFilter}
+		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: filterEncode}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
 			log.Println("[*ERROR*] -> Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
+			return err
 		}
 	}
 
-	adjacentsMap.filtersMutex.RUnlock()
-	adjacentsMap.connsMutex.RUnlock()
+	return nil
+
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, error) {
@@ -180,11 +187,14 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, erro
 	maxContactable := utils.GetIntegerEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	contactedNum := 0
 	for adj := range adjacentsMap.peerConns {
-		if adjacentsMap.filterMap[adj].Test([]byte(fileRequestMessage.FileName)) {
-			contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
-			contactedNum++
-			if contactedNum == maxContactable {
-				break
+		adjFilter, isInMap := adjacentsMap.filterMap[adj]
+		if isInMap {
+			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
+				contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+				contactedNum++
+				if contactedNum == maxContactable {
+					break
+				}
 			}
 		}
 	}

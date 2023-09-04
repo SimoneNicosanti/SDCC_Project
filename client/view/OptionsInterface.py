@@ -1,6 +1,7 @@
 from controller import Controller
 from engineering.Ticket import Method
 from engineering import MyErrors, Debug
+import os
 from utils.Utils import *
 
 def perform_action(request_type : Method, file_name : str):
@@ -19,10 +20,14 @@ def main():
     colored_print("Benvenuto nella CLI di gestione file!", Color.YELLOW)
 
     while True:
-        colored_print("Inserisci l'azione (get/put/delete) >>> ", Color.YELLOW, end = "")
+        colored_print("Inserisci l'azione (get/put/delete/clear) >>> ", Color.YELLOW, end = "")
         action = input("").strip().lower()
-
-        if action in ["get", "put", "delete"]:
+        if action == "clear":
+            if os.name == 'posix':
+                os.system('clear')
+            elif os.name == 'nt':
+                os.system('cls')
+        elif action in ["get", "put", "delete"]:
             colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
             file_name = input("").strip()
 
