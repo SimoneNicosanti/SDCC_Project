@@ -70,6 +70,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 
 // TODO impostare un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
+	utils.PrintEvent("CLIENT_DOWNLOAD", "Ricevuta richiesta per file "+requestMessage.FileName)
 	isValidRequest := checkTicket(requestMessage.TicketId)
 	if isValidRequest == -1 {
 		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
@@ -78,7 +79,7 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 
 	_, err := os.Stat("/files/" + requestMessage.FileName)
 	if os.IsNotExist(err) {
-		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId}
+		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
 		ownerEdge, err := peer.NeighboursFileLookup(fileRequest)
 
 		fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))

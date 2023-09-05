@@ -5,7 +5,6 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
 
@@ -26,7 +25,7 @@ type PeerFileServer struct {
 
 // TODO Togliere il ping?? Ha sempre ragione il registry: potrebbe funzionare anche con, ma la logica rimane abbastanza simile
 func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
-	log.Println("Ping Ricevuto da >>> ", edgePeer.PeerAddr)
+	utils.PrintEvent("PING_RECEIVED", "Ping Ricevuto da "+edgePeer.PeerAddr)
 	*returnPtr = 0
 	return nil
 }
@@ -41,12 +40,12 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	)
 	err := edgeFilter.GobDecode(bloomFilterMessage.BloomFilter)
 	if err != nil {
-		log.Println("[*BLOOM_ERROR*] -> impossibile decodificare il filtro ricevuto")
+		utils.PrintEvent("BLOOM_ERROR", "impossibile decodificare il filtro ricevuto")
 		return err
 	}
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	log.Println("[*BLOOM_RECEIVED*] -> da " + edgePeer.PeerAddr)
+	utils.PrintEvent("BLOOM_RECEIVED", "da "+edgePeer.PeerAddr)
 	return nil
 }
 
@@ -62,7 +61,7 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 		return fmt.Errorf("[*LOOKUP_ERROR*] -> Request already served.")
 	}
 
-	log.Printf("[*LOOKUP_RECEIVED*] -> da %s\n", fileRequestMessage.SenderPeer.PeerAddr)
+	utils.PrintEvent("LOOKUP_RECEIVED", "da "+fileRequestMessage.SenderPeer.PeerAddr)
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
 	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
@@ -86,6 +85,7 @@ func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
 
 	for message := range fileRequestCache.messageMap {
 		if message.TicketId == fileRequestMessage.TicketId && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
+			utils.PrintEvent("SERVED_REQUEST", "Ricevuta richiesta da "+fileRequestMessage.SenderPeer.PeerAddr+"\r\n\t(ticket "+fileRequestMessage.TicketId+")")
 			return true
 		}
 	}

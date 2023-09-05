@@ -15,7 +15,7 @@ func pingsToAdjacents() {
 		time.Sleep(time.Duration(PING_FREQUENCY) * time.Second)
 		adjacentsMap.connsMutex.Lock()
 		for adjPeer, adjConn := range adjacentsMap.peerConns {
-			err := adjConn.Call("EdgePeer.Ping", selfPeer, new(int))
+			err := adjConn.Call("EdgePeer.Ping", SelfPeer, new(int))
 			if err != nil {
 				// Il peer non risponde al Ping --> Rimozione dalla lista
 				adjacentsMap.peerConns[adjPeer].Close()
@@ -39,7 +39,7 @@ func heartbeatToRegistry() {
 		// Wait for the specified interval before the next heartbeat
 		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 		heartbeatFunction()
-		//log.Println("[*HEARTBEAT*] -> executed.")
+		//utils.PrintEvent("HEARTBEAT", "heartbeat eseguito.")
 	}
 }
 
@@ -47,7 +47,7 @@ func heartbeatFunction() {
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 
-	heartbeatMessage := HeartbeatMessage{EdgePeer: selfPeer, NeighboursList: map[EdgePeer]byte{}}
+	heartbeatMessage := HeartbeatMessage{EdgePeer: SelfPeer, NeighboursList: map[EdgePeer]byte{}}
 	for adjPeer := range adjacentsMap.peerConns {
 		heartbeatMessage.NeighboursList[adjPeer] = 0
 	}
@@ -55,14 +55,14 @@ func heartbeatFunction() {
 	if registryClient == nil {
 		newRegistryConnection, err := ConnectToNode("registry:1234")
 		if err != nil {
-			log.Println("[*ERROR*] -> Impossibile stabilire connessione con il Registry")
+			utils.PrintEvent("CONNECTION_ERROR", "Impossibile stabilire connessione con il Registry")
 			return
 		}
 		registryClient = newRegistryConnection
 	}
 	err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, &returnMap)
 	if err != nil {
-		log.Println("[*ERROR*] -> Failed to heartbeat to Registry")
+		utils.PrintEvent("HEARTBEAT_ERROR", "Invio di heartbeat al Registry fallito")
 		log.Println(err.Error())
 		registryClient.Close()
 		registryClient = nil
@@ -82,7 +82,7 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 		if !isInMap {
 			client, err := ConnectToNode(registryAdjPeer.PeerAddr)
 			if err != nil {
-				log.Println("[*ERROR*] -> Errore connessione " + registryAdjPeer.PeerAddr)
+				utils.PrintEvent("CONNECTION_ERROR", "Errore connessione a registry "+registryAdjPeer.PeerAddr)
 			} else {
 				adjacentsMap.peerConns[registryAdjPeer] = client
 			}
@@ -101,17 +101,17 @@ func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
 
 func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	client, err := ConnectToNode(peer.PeerAddr)
-	log.Println("[*CONN*] -> Connecting to " + peer.PeerAddr)
+	utils.PrintEvent("CONNECTION_ATTEMPT", "Tentativo di connessione a "+peer.PeerAddr)
 	// Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 	// il peer corrente lo ignorerà.
 	if err != nil {
-		log.Println("[*ERROR*] -> Impossibile stabilire la connessione con " + peer.PeerAddr)
+		utils.PrintEvent("CONNECTION_ERROR", "Impossibile stabilire la connessione con "+peer.PeerAddr)
 		return nil, err
 	}
 	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 	adjacentsMap.peerConns[peer] = client
-	log.Println("[*CONN_SUCCESS*] -> Connessione con " + peer.PeerAddr + " effettuata")
+	utils.PrintEvent("CONNECTION_SUCCESS", "Connessione con "+peer.PeerAddr+" effettuata con successo")
 	return client, nil
 }

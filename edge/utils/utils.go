@@ -160,3 +160,8 @@ func stringInSlice(str string, slice []string) bool {
 	}
 	return false
 }
+
+func PrintEvent(title string, content string) {
+	log.Printf("[*" + title + "*]")
+	fmt.Printf(content + "\r\n\r\n")
+}

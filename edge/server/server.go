@@ -33,7 +33,7 @@ var rabbitChannel *amqp.Channel
 func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	encoded, err := json.Marshal(ticket)
 	if err != nil {
-		log.Println("[*ERROR*] -> Error in marshaling Ticket for RabbitMQ")
+		utils.PrintEvent("MARSHAL_ERROR", "Error in marshaling Ticket for RabbitMQ")
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -43,10 +43,10 @@ func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 		Body:        encoded,
 	})
 	if err != nil {
-		log.Println("[*ERROR*] -> Error in publishing ticket on RabbitMQ")
+		utils.PrintEvent("RABBITMQ_ERROR", "Error in publishing ticket on RabbitMQ")
 		return err
 	} else {
-		log.Printf("[*TICKET*] -> published ticket with randomID : '%s'", ticket.Id)
+		utils.PrintEvent("TICKET_PUBLISHED", "il ticket con randomID '"+ticket.Id+"' è stato pubblicato")
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func createTicket(oldTicketIndex int) Ticket {
 	utils.ExitOnError("[*ERROR*] -> Error generating random ID for ticket", err)
 	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
 	ticket := Ticket{serverEndpoint, randomID}
-	log.Printf("[*TICKET*] -> generated ticket with randomID : '%s'", randomID)
+	utils.PrintEvent("TICKET_GENERATED", "il ticket con randomID '"+randomID+"' è stato generato")
 	return ticket
 }
 
@@ -114,6 +114,6 @@ func setUpGRPC() {
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 	grpcServer := grpc.NewServer()
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	log.Printf("[*GRPC SERVER STARTED*] -> endpoint : '%s'", serverEndpoint)
+	utils.PrintEvent("GRPC SERVER STARTED", "Server Endpoint : "+serverEndpoint)
 	go grpcServer.Serve(lis)
 }
