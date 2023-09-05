@@ -129,6 +129,7 @@ func retrieveFreeMemorySize() int {
 		//TODO manage error
 		log.Println(err.Error())
 	}
+	log.Println(int(statPtr.Bfree * uint64(statPtr.Bsize)))
 	return int(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
@@ -136,8 +137,11 @@ func checkFileSize(file_size int) bool {
 	return file_size <= utils.GetIntegerEnvironmentVariable("MAX_CACHED_FILE_SIZE")
 }
 
-/* Cerca l'indice dell'elemento da cercare. Ritorna l'indice se l'elemento è presente oppure -1 se non è presente.
-Ritorna un errore nel caso in cui la mappa e la coda non sono consistenti nei valori contenuti. */
+/*
+	Cerca l'indice dell'elemento da cercare. Ritorna l'indice se l'elemento è presente oppure -1 se non è presente.
+
+Ritorna un errore nel caso in cui la mappa e la coda non sono consistenti nei valori contenuti.
+*/
 func (cache *Cache) getIndex(file_name string) (int, error) {
 	_, alreadyExists := cache.cachingMap[file_name]
 	if !alreadyExists {
@@ -170,14 +174,15 @@ func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
 
 	var localFile *os.File
 	fileCreated := false
+	var err error
 
 	errorHashString := fmt.Sprintf("%x", sha256.Sum256([]byte("[*ERROR*]")))
 	for chunk := range fileChannel {
 		if !fileCreated {
 			fileCreated = true
-			localFile, err := os.Create("/files/" + fileName)
+			localFile, err = os.Create("/files/" + fileName)
 			if err != nil {
-				return fmt.Errorf("[*ERROR*] - File creation failed")
+				return fmt.Errorf("[*CACHE_ERROR*] - File creation failed")
 			}
 			syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
 			defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
@@ -186,20 +191,21 @@ func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
 
 		chunkString := fmt.Sprintf("%x", chunk)
 		if strings.Compare(chunkString, errorHashString) == 0 {
-			log.Println("[*ABORT*] -> Error occurred, removing file...")
+			log.Println("[*CACHE_ABORT*] -> Error occurred, removing file...")
 			return os.Remove("/files/" + fileName)
 		}
 		_, err := localFile.Write(chunk)
 		if err != nil {
+			log.Println(err.Error())
 			os.Remove("/files/" + fileName)
-			log.Printf("[*ERROR*] -> Impossibile inserire il file '%s' in cache\n", fileName)
-			return fmt.Errorf("[*ERROR*] -> Impossibile inserire il file in cache")
+			log.Printf("[*CACHE_ERROR*] -> Impossibile inserire il file '%s' in cache\n", fileName)
+			return fmt.Errorf("[*CACHE_ERROR*] -> Impossibile inserire il file in cache")
 		}
 	}
 	if fileCreated {
-		log.Printf("[*SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
+		log.Printf("[*CACHE_SUCCESS*] - File '%s' caricato localmente con successo\r\n", fileName)
 	} else {
-		log.Printf("[*FAILURE*] - Impossibile caricare localmente il File '%s'\r\n", fileName)
+		log.Printf("[*CACHE_FAILURE*] - Impossibile caricare localmente il File '%s'\r\n", fileName)
 	}
 	return nil
 }

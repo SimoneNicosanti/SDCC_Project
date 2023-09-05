@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -40,12 +41,12 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	)
 	err := edgeFilter.GobDecode(bloomFilterMessage.BloomFilter)
 	if err != nil {
-		log.Println("[*ERROR*] -> impossibile decodificare il filtro ricevuto")
+		log.Println("[*BLOOM_ERROR*] -> impossibile decodificare il filtro ricevuto")
 		return err
 	}
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	log.Println("[*BLOOM_FILTER*] -> Ricevuto da " + edgePeer.PeerAddr)
+	log.Println("[*BLOOM_RECEIVED*] -> da " + edgePeer.PeerAddr)
 	return nil
 }
 
@@ -57,6 +58,11 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 
 // TODO Aggiungere cache dei messaggi per non elaborare più volte lo stesso
 func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *PeerFileServer) error {
+	if checkServedRequest(fileRequestMessage) {
+		return fmt.Errorf("[*LOOKUP_ERROR*] -> Request already served.")
+	}
+
+	log.Printf("[*LOOKUP_RECEIVED*] -> da %s\n", fileRequestMessage.SenderPeer.PeerAddr)
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
 	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
@@ -64,7 +70,7 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			NeighboursFileLookup(fileRequestMessage)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
-			return fmt.Errorf("[*ERROR*] -> File '%s' wasn't found. Request TTL zeroed, not propagating request", fileRequestMessage.FileName)
+			return fmt.Errorf("[*LOOKUP_ERROR*] -> File '%s' not found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
 		*returnPtr = peerFileServer
@@ -72,6 +78,20 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 		return err
 	}
 	return nil
+}
+
+func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
+	fileRequestCache.mutex.Lock()
+	defer fileRequestCache.mutex.Unlock()
+
+	for message := range fileRequestCache.messageMap {
+		if message.TicketId == fileRequestMessage.TicketId && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
+			return true
+		}
+	}
+	fileRequestCache.messageMap[fileRequestMessage] = time.Now()
+	return false
+
 }
 
 func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownloadRequest, downloadStream client.EdgeFileService_DownloadFromEdgeServer) error {

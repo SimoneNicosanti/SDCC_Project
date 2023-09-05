@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"sync"
+	"time"
 
 	bloom "github.com/tylertreat/BoomFilters"
 )
@@ -27,8 +28,16 @@ type BloomFilterMessage struct {
 }
 
 type FileRequestMessage struct {
-	FileName string
-	TTL      int
+	FileName   string
+	TTL        int
+	SenderPeer EdgePeer
+	TicketId   string
+}
+
+// Attenzione alla gestione dei Mutex
+type FileRequestCache struct {
+	mutex      sync.RWMutex
+	messageMap map[FileRequestMessage](time.Time)
 }
 
 var adjacentsMap = AdjacentPeers{
@@ -36,6 +45,11 @@ var adjacentsMap = AdjacentPeers{
 	map[EdgePeer]*rpc.Client{},
 	sync.RWMutex{},
 	map[EdgePeer]*bloom.StableBloomFilter{},
+}
+
+var fileRequestCache = FileRequestCache{
+	sync.RWMutex{},
+	map[FileRequestMessage]time.Time{},
 }
 
 // Comunica ai tuoi vicini di aggiungerti come loro vicino

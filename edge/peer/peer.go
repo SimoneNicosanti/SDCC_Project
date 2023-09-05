@@ -147,11 +147,11 @@ func temporizedNotifyBloomFilters() {
 	FILTER_NOTIFY_TIME := utils.GetIntegerEnvironmentVariable("FILTER_NOTIFY_TIME")
 	for {
 		time.Sleep(time.Duration(FILTER_NOTIFY_TIME) * time.Second)
-		notifyBloomFilters()
+		notifyBloomFiltersToAdjacents()
 	}
 }
 
-func notifyBloomFilters() error {
+func notifyBloomFiltersToAdjacents() error {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
@@ -167,7 +167,8 @@ func notifyBloomFilters() error {
 		filterMessage := BloomFilterMessage{EdgePeer: selfPeer, BloomFilter: filterEncode}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
-			log.Println("[*ERROR*] -> Impossiile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
+			log.Println("[*BLOOM_ERROR*] -> Impossibile notificare il Filtro di Bloom a " + edgePeer.PeerAddr)
+			log.Println(err.Error())
 			return err
 		}
 	}
@@ -176,22 +177,31 @@ func notifyBloomFilters() error {
 
 }
 
-func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, error) {
+func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (PeerFileServer, error) {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
 	defer adjacentsMap.filtersMutex.RUnlock()
 	defer adjacentsMap.connsMutex.RUnlock()
 
-	doneChannel := make(chan *rpc.Call)
+	fileRequestMessage.SenderPeer = selfPeer
+
 	maxContactable := utils.GetIntegerEnvironmentVariable("MAX_CONTACTABLE_ADJ")
+	doneChannel := make(chan *rpc.Call, maxContactable)
 	contactedNum := 0
+
+	log.Println("[*LOOKUP_STARTED*] -> Invio richieste")
+
+	// Contattiamo solo i vicini positivi ai filtri
 	for adj := range adjacentsMap.peerConns {
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
 			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
-				contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
-				contactedNum++
+				if adj != fileRequestMessage.SenderPeer {
+					log.Printf("Richiesta inviata a %s\n", adj.PeerAddr)
+					contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+					contactedNum++
+				}
 				if contactedNum == maxContactable {
 					break
 				}
@@ -199,13 +209,17 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, erro
 		}
 	}
 
+	// Contattiamo (come rimanenti) alcuni vicini a caso con i filtri negativi
 	if contactedNum < maxContactable {
 		falseFiltersNeighbours := findFalseAdjacentsFilter(fileRequestMessage.FileName)
 		for i := 0; i < len(falseFiltersNeighbours); i++ {
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-			contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
-			contactedNum++
+			if randomNeigh != fileRequestMessage.SenderPeer {
+				log.Printf("Richiesta inviata a %s\n", randomNeigh.PeerAddr)
+				contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
+				contactedNum++
+			}
 			if contactedNum == maxContactable {
 				break
 			}
@@ -213,15 +227,18 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (EdgePeer, erro
 		}
 	}
 
+	// Aspettiamo la prima risposta
+	// TODO Vedere se ritornare il canale anziché il primo che risponde: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
 	for i := 0; i < contactedNum; i++ {
+		log.Println("[*LOOKUP_WAIT*] -> Attesa di risposte")
 		neighbourCall := <-doneChannel
 		err := neighbourCall.Error
 		if err == nil {
-			return neighbourCall.Reply.(EdgePeer), nil
+			return neighbourCall.Reply.(PeerFileServer), nil
 		}
 	}
 
-	return EdgePeer{}, fmt.Errorf("[*ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+	return PeerFileServer{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 
 }
 

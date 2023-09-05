@@ -127,8 +127,8 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 				firstNodeConn := connectionMap.connections[firstCompNode]
 				secondNodeConn := connectionMap.connections[secondCompNode]
 
-				err_1 := firstNodeConn.Call("PeerService.AddNeighbour", secondCompNode, nil)
-				err_2 := secondNodeConn.Call("PeerService.AddNeighbour", firstCompNode, nil)
+				err_1 := firstNodeConn.Call("EdgePeer.AddNeighbour", secondCompNode, nil)
+				err_2 := secondNodeConn.Call("EdgePeer.AddNeighbour", firstCompNode, nil)
 				if err_1 != nil && err_2 != nil {
 					createdAnEdge = true
 				}

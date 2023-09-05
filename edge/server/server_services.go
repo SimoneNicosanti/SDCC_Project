@@ -78,15 +78,16 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 
 	_, err := os.Stat("/files/" + requestMessage.FileName)
 	if os.IsNotExist(err) {
-		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL")}
+		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId}
 		ownerEdge, err := peer.NeighboursFileLookup(fileRequest)
 
 		fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 		defer close(fileChannel)
-		go cache.WriteChunksOnFile(fileChannel, requestMessage.FileName)
+		// TODO Modificare la risposta in modo che torni la size del file!!
+		go cache.GetCache().InsertFileInCache(fileChannel, requestMessage.FileName, 0)
 
 		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
-			log.Printf("[*NETWORK*] -> file '%s' found in edge %s", requestMessage.FileName, ownerEdge.PeerAddr)
+			log.Printf("[*NETWORK*] -> file '%s' found in edge %s", requestMessage.FileName, ownerEdge.IpAddr)
 			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel)
 
 		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
@@ -96,23 +97,25 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			// if err != nil {
 			// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 			// 	fileChannel <- errorHash[:]
-			// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - Couldn't locate requested file in specified bucket")
+			// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> Couldn't locate requested file in specified bucket")
 			// }
+			return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> S3 DISABILITATO")
 		}
 	} else if err == nil { // ce l'ha l'edge corrente --> Leggi file e invia chunk
 		log.Printf("[*CACHE*] -> File '%s' found in cache", requestMessage.FileName)
 		return sendFromLocalFileStream(requestMessage, downloadStream)
 	} else { //Got an error
 		// TODO Aggiungere errore per path sbagliato
+		return err
 	}
 	log.Println("[*SUCCESS*] -> Invio del file '" + requestMessage.FileName + "' Completata")
 	return nil
 }
 
-func sendFromOtherEdge(ownerEdge peer.EdgePeer, requestMessage *client.FileDownloadRequest, clientDownloadStream client.FileService_DownloadServer, fileChannel chan []byte) error {
+func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.FileDownloadRequest, clientDownloadStream client.FileService_DownloadServer, fileChannel chan []byte) error {
 	// 1] Open gRPC connection to ownerEdge
 	// 2] retrieve chunk by chunk (send to client + save in local)
-	conn, err := grpc.Dial(ownerEdge.PeerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(ownerEdge.IpAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 		fileChannel <- errorHash[:]
