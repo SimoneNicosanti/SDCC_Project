@@ -112,7 +112,10 @@ func setUpGRPC() {
 	serverEndpoint = fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
-	grpcServer := grpc.NewServer()
+	opts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(utils.GetIntegerEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
+	}
+	grpcServer := grpc.NewServer(opts...)
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
 	utils.PrintEvent("GRPC SERVER STARTED", "Server Endpoint : "+serverEndpoint)
 	go grpcServer.Serve(lis)

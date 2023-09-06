@@ -5,7 +5,6 @@ import (
 	"edge/utils"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -29,7 +28,7 @@ type File struct {
 type Cache struct {
 	cachingQueue []File
 	cachingMap   map[string]byte
-	mutex        sync.RWMutex //TODO decidere chi prende i lock (se le singole funzioni o il chiamante)
+	mutex        sync.RWMutex
 }
 
 var selfCache Cache = Cache{
@@ -41,7 +40,15 @@ func GetCache() *Cache {
 	return &selfCache
 }
 
-//TODO riportare tutto sulla cache vera
+func (cache *Cache) GetFileSize(file_name string) int {
+
+	for _, file := range cache.cachingQueue {
+		if file.file_name == file_name {
+			return file.file_size
+		}
+	}
+	return -1
+}
 
 func (cache *Cache) InsertFileInCache(fileChannel chan []byte, file_name string, file_size int) {
 	cache.mutex.Lock()
@@ -50,16 +57,8 @@ func (cache *Cache) InsertFileInCache(fileChannel chan []byte, file_name string,
 	cache.insertFileInCache(fileChannel, file_name, file_size, true)
 }
 
-func (cache *Cache) RemoveFileInCache(file_name string) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
-
-	cache.removeFileInCache(file_name, true)
-}
-
 func (cache *Cache) insertFileInCache(fileChannel chan []byte, file_name string, file_size int, writeFile bool) {
-	//TODO gestire il problema per cui i file sono identificati soltanto dal nome
-
+	//TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?))
 	_, alreadyExists := cache.cachingMap[file_name]
 	if alreadyExists {
 		// Se esiste già, reinserisci il file in coda, ovvero eliminalo e reinseriscilo
@@ -67,13 +66,12 @@ func (cache *Cache) insertFileInCache(fileChannel chan []byte, file_name string,
 		cache.insertFileInCache(fileChannel, file_name, file_size, false)
 		return
 	} else {
-		if checkFileSize(file_size) {
+		if CheckFileSize(file_size) {
 			freeMemoryForInsert(file_size, cache)
 			if writeFile {
-				err := WriteChunksOnFile(fileChannel, file_name)
+				err := writeChunksInCache(fileChannel, file_name)
 				if err != nil {
-					//TODO gestione errori
-					log.Println(err.Error())
+					utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
 					return
 				}
 			}
@@ -89,8 +87,6 @@ func freeMemoryForInsert(file_size int, cache *Cache) {
 	// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
 	//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
 	// piuttosto che eliminare gli ultimi e basta
-	//check sulla memoria disponibile
-	//elimino ultimo elemento nella queue
 	for {
 		if retrieveFreeMemorySize() < file_size {
 			cache.removeFileInCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name, true)
@@ -104,10 +100,8 @@ func (cache *Cache) removeFileInCache(file_name string, removeFile bool) {
 
 	index, err := cache.getIndex(file_name)
 	if err != nil {
-		//TODO manage error
 		utils.ExitOnError(err.Error(), err)
 	}
-
 	// Eliminazione del file dal filesystem
 	if removeFile {
 		err = os.Remove("/files/" + file_name)
@@ -126,15 +120,20 @@ func retrieveFreeMemorySize() int {
 	statPtr := new(syscall.Statfs_t)
 	err := syscall.Statfs("/files", statPtr)
 	if err != nil {
-		//TODO manage error
-		log.Println(err.Error())
+		utils.PrintEvent("RETR_FREE_MEM_ERR", fmt.Sprintf("Errore durante il recupero della dimensione della memoria libera.\r\nL'errore è '%s'", err.Error()))
 	}
 	//utils.PrintEvent("CACHE_INFO", fmt.Sprintf("Lo spazio residuo per lo storage di file è %d", statPtr.Bfree*uint64(statPtr.Bsize)))
 	return int(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
-func checkFileSize(file_size int) bool {
-	return file_size <= utils.GetIntegerEnvironmentVariable("MAX_CACHED_FILE_SIZE")
+func CheckFileSize(file_size int) bool {
+	max_size := utils.GetIntegerEnvironmentVariable("MAX_CACHABLE_FILE_SIZE")
+	if file_size <= max_size {
+		return true
+	} else {
+		utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File è troppo grande per essere caricato nella cache.\r\n(FILE_SIZE: %.2f MB > MAX: %.2f MB)", float64(file_size)/1048576.0, float64(max_size)/1048576.0))
+		return false
+	}
 }
 
 /*
@@ -169,42 +168,48 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 	return newFilter
 }
 
-// TODO Potrebbero esserci dei problemi di blocco nel caso in cui il thread consumer vada in errore: il channel si satura e non si procede
-func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
+func writeChunksInCache(fileChannel chan []byte, fileName string) error {
 
 	var localFile *os.File
 	fileCreated := false
-	var err error
+	var errorOccurred bool = false
+	var err error = nil
 
 	errorHashString := fmt.Sprintf("%x", sha256.Sum256([]byte("[*ERROR*]")))
 	for chunk := range fileChannel {
+		if errorOccurred {
+			continue
+		}
+
 		if !fileCreated {
-			fileCreated = true
 			localFile, err = os.Create("/files/" + fileName)
 			if err != nil {
-				return fmt.Errorf("[*CACHE_ERROR*] -> Creazione del file locale fallita")
+				errorOccurred = true
+				utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
+			} else {
+				fileCreated = true
+				syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
+				defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
+				defer localFile.Close()
 			}
-			syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
-			defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
-			defer localFile.Close()
 		}
 
 		chunkString := fmt.Sprintf("%x", chunk)
 		if strings.Compare(chunkString, errorHashString) == 0 {
-			utils.PrintEvent("CACHE_ABORT", "C'è stato un errore, non è stato possibile caricare il file '"+fileName+"' nella cache.")
-			return os.Remove("/files/" + fileName)
+			errorOccurred = true
+			os.Remove("/files/" + fileName)
+			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Sequenza di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.", fileName))
 		}
 		_, err := localFile.Write(chunk)
 		if err != nil {
+			errorOccurred = true
 			os.Remove("/files/" + fileName)
-			utils.PrintEvent("CACHE_ERROR", "Impossibile inserire il file '"+fileName+"' nella cache.\r\nL'errore restituito è: '"+err.Error()+"'.")
-			return fmt.Errorf("[*CACHE_ERROR*] -> Impossibile inserire il file in cache")
+			utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile scrivere il file '%s' nella cache.", fileName))
 		}
 	}
-	if fileCreated {
-		utils.PrintEvent("CACHE_SUCCESS", "File '"+fileName+"' caricato localmente con successo")
-	} else {
-		utils.PrintEvent("CACHE_FAILURE", "Qualcosa è andato storto.\r\nImpossibile caricare localmente il File '"+fileName+"'.")
+
+	if fileCreated && !errorOccurred {
+		utils.PrintEvent("CACHE_SUCCESS", fmt.Sprintf("File '%s' caricato localmente con successo", fileName))
 	}
-	return nil
+	return err
 }

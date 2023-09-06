@@ -15,15 +15,10 @@ import (
 	"google.golang.org/grpc"
 )
 
-/*
-	TODO : Azione nell'heartbeat (Peer -> Registry)
-	TODO : Ricezione dei ping -> se ricevo un ping/richiesta di qualcuno che non conosco, allora lo inserisco come vicino
-	Logica di rilevamento errori: heartbeat verso il registry e ping verso i vicini.
-	In caso di caduta del registry, questo può richiedere ai peer di comunicargli i loro vicini in modo tale che il registry
-	può ricreare la rete.
-	TODO : Thread che risponde alle richieste nella coda Rabbit_mq
-	TODO : Meccanismo di caching
-*/
+// TODO : Ricezione dei ping -> se ricevo un ping/richiesta di qualcuno che non conosco, allora lo inserisco come vicino
+// Logica di rilevamento errori: heartbeat verso il registry e ping verso i vicini.
+// In caso di caduta del registry, questo può richiedere ai peer di comunicargli i loro vicini in modo tale che il registry
+// può ricreare la rete.
 
 var SelfPeer EdgePeer
 var peerFileServer PeerFileServer
@@ -58,7 +53,7 @@ func ActAsPeer() {
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
 	utils.PrintEvent("HEARTBEAT", "Inizio meccanismo di heartbeat verso il server Registry")
 
-	//TODO Far partire il meccanismo di ping e di notifica dei filtr
+	//TODO Far partire il meccanismo di ping
 	go temporizedNotifyBloomFilters()
 
 	//Connessione a tutti i vicini
@@ -178,12 +173,14 @@ func notifyBloomFiltersToAdjacents() error {
 
 }
 
-func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (PeerFileServer, error) {
+func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResponse, error) {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
 	defer adjacentsMap.filtersMutex.RUnlock()
 	defer adjacentsMap.connsMutex.RUnlock()
+
+	fileRequestMessage.ForwarderPeer = SelfPeer
 
 	maxContactable := utils.GetIntegerEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	doneChannel := make(chan *rpc.Call, maxContactable)
@@ -224,20 +221,17 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (PeerFileServer
 		}
 	}
 
-	// Aspettiamo la prima risposta
-	// TODO Vedere se ritornare il canale anziché il primo che risponde: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
+	// Ritorniamo il canale anziché il primo che risponde: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
 	for i := 0; i < contactedNum; i++ {
 		neighbourCall := <-doneChannel
 		err := neighbourCall.Error
+		fileLookupResponsePtr := neighbourCall.Reply.(*FileLookupResponse)
 		if err == nil {
-			ownerPeerPtr := neighbourCall.Reply.(*PeerFileServer)
-			utils.PrintEvent("LOOKUP_RESPONSE_OK", "Ricevuta risposta da "+ownerPeerPtr.IpAddr)
-			return *ownerPeerPtr, nil
-		} else {
-			utils.PrintEvent("LOOKUP_RESPONSE_ERR", "Ricevuta risposta negativa.")
+			utils.PrintEvent("LOOKUP_RESPONSE_OK", "Riscontro positivo da "+fileLookupResponsePtr.OwnerEdge.IpAddr)
+			return *fileLookupResponsePtr, nil
 		}
 	}
-	return PeerFileServer{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+	return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 
 }
 
@@ -253,9 +247,9 @@ func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 
 func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer, doneChannel chan *rpc.Call) bool {
 	if adj != fileRequestMessage.SenderPeer {
-		ownerPeerPtr := new(PeerFileServer)
+		fileLookupResponsePtr := new(FileLookupResponse)
 		adjConn := adjacentsMap.peerConns[adj]
-		adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, ownerPeerPtr, doneChannel)
+		adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
 		return true
 	}
 	return false

@@ -27,16 +27,8 @@ func pingsToAdjacents() {
 }
 
 func heartbeatToRegistry() {
-
 	HEARTBEAT_FREQUENCY := utils.GetIntegerEnvironmentVariable("HEARTBEAT_FREQUENCY")
-	// if err != nil {
-	// 	log.Println("Error retreving HEARTBEAT_FREQUENCY from properties", err)
-	// 	return
-	// }
-
 	for {
-		// TODO Perform heartbeat action here
-		// Wait for the specified interval before the next heartbeat
 		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 		heartbeatFunction()
 		//utils.PrintEvent("HEARTBEAT", "heartbeat eseguito.")

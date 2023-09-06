@@ -19,7 +19,7 @@ func SendToS3(fileName string, uploadStreamReader UploadStream) error {
 	sess := getSession()
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
 		d.PartSize = getS3ChunkSize("S3_UPLOAD_CHUNK_SIZE")
-		d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+		d.Concurrency = 3 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 	})
 	_, err := uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), // nome bucket
@@ -50,14 +50,12 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 	} else {
 		//TODO Metti in cache
 	}
-
-	// TODO Capire perché fa come cazzo gli pare
 	// Crea un downloader con la dimensione delle parti configurata
 	downloader := s3manager.NewDownloader(
 		sess,
 		func(d *s3manager.Downloader) {
-			d.PartSize = getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE")
-			d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+			d.PartSize = getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE") //TODO capire perché non rispetta il parametro
+			d.Concurrency = 1                                     //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 		},
 	)
 	log.Println(downloader.PartSize, downloader.Concurrency)

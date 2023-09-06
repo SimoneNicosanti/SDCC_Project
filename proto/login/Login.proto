@@ -21,6 +21,6 @@ message Response {
         ERROR = 1 ;
     }
 
-    // TODO: Change name
+    // TODO: Cambiare nome
     ResponseType response = 1 ;
 }

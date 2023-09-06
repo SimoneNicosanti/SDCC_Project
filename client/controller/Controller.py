@@ -30,14 +30,15 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
             Debug.debug("Connessione con RabbitMQ caduta.")
             if count >= 3:
                 Debug.debug("Impossibile stabilire la connesione con la coda.")
-                raise MyErrors.UnableToConnectWithRabbit() #TODO creare eccezione apposita
+                raise MyErrors.UnableToConnectWithRabbit() 
             count+=1
             RabbitSingleton.startNewConnection()
             Debug.debug("Connessione con RabbitMQ ristabilità.")
 
     # Preparazione chiamata gRPC
     try:
-        channel = grpc.insecure_channel(ticket.peer_addr)
+        channel : grpc.Channel = grpc.insecure_channel(ticket.peer_addr, options=[('grpc.max_receive_message_length', int(os.environ.get("MAX_GRPC_MESSAGE_SIZE")))])
+
         stub = FileServiceStub(channel)
     except grpc.RpcError as e:
         print(e.code())
@@ -147,13 +148,12 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
 
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
     if response.ticket_id != ticket_id:
-        #TODO
-        raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta. E' stata ricevuta una risposta relativa ad un'altra richiesta.")
+        raise MyErrors.RequestFailedException("Impossibile soddisfare la richiesta. E' stata ricevuta una risposta relativa ad un'altra richiesta.")
     
     return response.success
 
 def deleteFile(fileName : str) -> bool:
-    #TODO
+    #TODO implementazione operazione di delete del file
     pass
 
 def login(username : str, passwd : str, email : str) -> bool :

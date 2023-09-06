@@ -1,6 +1,5 @@
 package services
 
-// TODO Controllare partizioni di rete
 func FindConnectedComponents(peerMap map[EdgePeer](map[EdgePeer]byte)) [][]EdgePeer {
 	visitedMap := make(map[EdgePeer](bool))
 	for edge := range peerMap {
@@ -33,7 +32,7 @@ func recursiveConnectedComponentsResearch(peerMap map[EdgePeer](map[EdgePeer]byt
 			neighboursOfNeighbour := recursiveConnectedComponentsResearch(peerMap, neighbour, visitedMap)
 			for index := range neighboursOfNeighbour {
 				foundPeers = append(foundPeers, neighboursOfNeighbour[index])
-				// TODO Check not repeated elements inside list
+				// TODO Controlla che gli elementi nella lista non siano duplicati
 			}
 		}
 	}

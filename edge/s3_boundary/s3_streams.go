@@ -8,17 +8,19 @@ import (
 )
 
 type DownloadStream struct {
-	ClientStream client.FileService_DownloadServer
-	FileName     string
-	TicketID     string
-	FileChannel  chan []byte
+	ClientStream   client.FileService_DownloadServer
+	FileName       string
+	TicketID       string
+	FileChannel    chan []byte
+	WriteOnChannel bool
 }
 
 type UploadStream struct {
-	ClientStream  client.FileService_UploadServer
-	FileName      string
-	ResidualChunk []byte
-	FileChannel   chan []byte
+	ClientStream   client.FileService_UploadServer
+	FileName       string
+	ResidualChunk  []byte
+	FileChannel    chan []byte
+	WriteOnChannel bool
 }
 
 func (u *UploadStream) Read(p []byte) (n int, err error) {
@@ -41,10 +43,12 @@ func (u *UploadStream) Read(p []byte) (n int, err error) {
 			return 0, fmt.Errorf("[*ERROR*] -> Message Receive From gRPC encountered some problems")
 		}
 
-		// Send chunk to local Write
-		chunkCopy := make([]byte, len(chunkMessage.Chunk))
-		copy(chunkCopy, chunkMessage.Chunk)
-		u.FileChannel <- chunkCopy
+		if u.WriteOnChannel {
+			// Send chunk to local Write
+			chunkCopy := make([]byte, len(chunkMessage.Chunk))
+			copy(chunkCopy, chunkMessage.Chunk)
+			u.FileChannel <- chunkCopy
+		}
 
 		fileChunk = chunkMessage.Chunk
 	}
@@ -71,9 +75,12 @@ func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
 		d.FileChannel <- errorHash[:]
 		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to client encountered some problems")
 	}
-	//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
-	chunkCopy := make([]byte, len(p)) // IMPORTANTE
-	copy(chunkCopy, p)
-	d.FileChannel <- chunkCopy
+
+	if d.WriteOnChannel {
+		//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+		chunkCopy := make([]byte, len(p)) // IMPORTANTE
+		copy(chunkCopy, p)
+		d.FileChannel <- chunkCopy
+	}
 	return len(p), nil
 }

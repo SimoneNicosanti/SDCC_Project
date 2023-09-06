@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"edge/cache"
 	"edge/proto/client"
 	"edge/utils"
 	"fmt"
@@ -17,6 +18,11 @@ import (
 
 type EdgePeer struct {
 	PeerAddr string
+}
+
+type FileLookupResponse struct {
+	OwnerEdge PeerFileServer
+	FileSize  int
 }
 
 type PeerFileServer struct {
@@ -56,14 +62,12 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	return err
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *PeerFileServer) error {
+func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *FileLookupResponse) error {
 	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 	if checkServedRequest(fileRequestMessage) {
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.TicketId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
-
-	fileRequestMessage.ForwarderPeer = SelfPeer
 
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
@@ -76,7 +80,8 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			return fmt.Errorf("[*LOOKUP_END*] -> Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
-		*returnPtr = peerFileServer
+		file_size := cache.GetCache().GetFileSize(fileRequestMessage.FileName)
+		*returnPtr = FileLookupResponse{peerFileServer, file_size}
 	} else { // Got an error :(
 		return err
 	}

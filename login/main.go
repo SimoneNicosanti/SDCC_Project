@@ -17,7 +17,7 @@ type LoginServer struct {
 
 func (s *LoginServer) Login(ctx context.Context, userInfo *proto.UserInfo) (*proto.Response, error) {
 	fmt.Printf("Received message")
-	// TODO Implement login logic
+	// TODO implementare la logica di login
 	return &proto.Response{Response: proto.Response_ERROR}, nil
 }
 
