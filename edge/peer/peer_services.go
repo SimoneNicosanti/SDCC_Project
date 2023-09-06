@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -45,7 +46,7 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	}
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	utils.PrintEvent("BLOOM_RECEIVED", "da "+edgePeer.PeerAddr)
+	//utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
 	return nil
 }
 
@@ -55,21 +56,24 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	return err
 }
 
-// TODO Aggiungere cache dei messaggi per non elaborare più volte lo stesso
 func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *PeerFileServer) error {
+	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 	if checkServedRequest(fileRequestMessage) {
-		return fmt.Errorf("[*LOOKUP_ERROR*] -> Request already served.")
+		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.TicketId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
+		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
 
-	utils.PrintEvent("LOOKUP_RECEIVED", "da "+fileRequestMessage.SenderPeer.PeerAddr)
+	fileRequestMessage.ForwarderPeer = SelfPeer
+
 	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
 	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
 			NeighboursFileLookup(fileRequestMessage)
+			return fmt.Errorf("[*LOOKUP_CONTINUE*] -> Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad ulteriori vicini", fileRequestMessage.FileName)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
-			return fmt.Errorf("[*LOOKUP_ERROR*] -> File '%s' not found. Request TTL zeroed, not propagating request.", fileRequestMessage.FileName)
+			return fmt.Errorf("[*LOOKUP_END*] -> Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName)
 		}
 	} else if err == nil { //file FOUND in local memory --> i have it! ;)
 		*returnPtr = peerFileServer
@@ -85,7 +89,6 @@ func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
 
 	for message := range fileRequestCache.messageMap {
 		if message.TicketId == fileRequestMessage.TicketId && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
-			utils.PrintEvent("SERVED_REQUEST", "Ricevuta richiesta da "+fileRequestMessage.SenderPeer.PeerAddr+"\r\n\t(ticket "+fileRequestMessage.TicketId+")")
 			return true
 		}
 	}
@@ -97,9 +100,13 @@ func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
 func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownloadRequest, downloadStream client.EdgeFileService_DownloadFromEdgeServer) error {
 	localFile, err := os.Open("/files/" + fileDownloadRequest.FileName)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> File opening failed")
+		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*OPEN_ERROR*] -> Apertura del file fallita.")
 	}
+	//TODO Gestire errore FLOCK
+	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
+	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
 	defer localFile.Close()
+
 	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
 	for {
@@ -108,7 +115,7 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownlo
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] -> Failed during read operation\r")
+			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*READ_ERROR*] -> Faliure durante l'operazione di lettura.\r")
 		}
 		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
 	}

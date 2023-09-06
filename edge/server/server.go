@@ -46,7 +46,7 @@ func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 		utils.PrintEvent("RABBITMQ_ERROR", "Error in publishing ticket on RabbitMQ")
 		return err
 	} else {
-		utils.PrintEvent("TICKET_PUBLISHED", "il ticket con randomID '"+ticket.Id+"' è stato pubblicato")
+		utils.PrintEvent("TICKET_PUBLISHED", "il ticket '"+ticket.Id+"' è stato pubblicato")
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func createTicket(oldTicketIndex int) Ticket {
 	utils.ExitOnError("[*ERROR*] -> Error generating random ID for ticket", err)
 	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
 	ticket := Ticket{serverEndpoint, randomID}
-	utils.PrintEvent("TICKET_GENERATED", "il ticket con randomID '"+randomID+"' è stato generato")
+	utils.PrintEvent("TICKET_GENERATED", "il ticket '"+randomID+"' è stato generato")
 	return ticket
 }
 

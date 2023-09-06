@@ -129,7 +129,7 @@ func retrieveFreeMemorySize() int {
 		//TODO manage error
 		log.Println(err.Error())
 	}
-	log.Println(int(statPtr.Bfree * uint64(statPtr.Bsize)))
+	//utils.PrintEvent("CACHE_INFO", fmt.Sprintf("Lo spazio residuo per lo storage di file è %d", statPtr.Bfree*uint64(statPtr.Bsize)))
 	return int(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
@@ -182,7 +182,7 @@ func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
 			fileCreated = true
 			localFile, err = os.Create("/files/" + fileName)
 			if err != nil {
-				return fmt.Errorf("[*CACHE_ERROR*] -> File creation failed")
+				return fmt.Errorf("[*CACHE_ERROR*] -> Creazione del file locale fallita")
 			}
 			syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
 			defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
@@ -191,21 +191,20 @@ func WriteChunksOnFile(fileChannel chan []byte, fileName string) error {
 
 		chunkString := fmt.Sprintf("%x", chunk)
 		if strings.Compare(chunkString, errorHashString) == 0 {
-			utils.PrintEvent("CACHE_ABORT", "Error occurred, removing file...")
+			utils.PrintEvent("CACHE_ABORT", "C'è stato un errore, non è stato possibile caricare il file '"+fileName+"' nella cache.")
 			return os.Remove("/files/" + fileName)
 		}
 		_, err := localFile.Write(chunk)
 		if err != nil {
-			log.Println(err.Error())
 			os.Remove("/files/" + fileName)
-			utils.PrintEvent("CACHE_ERROR", "Impossibile inserire il file "+fileName+" nella cache")
+			utils.PrintEvent("CACHE_ERROR", "Impossibile inserire il file '"+fileName+"' nella cache.\r\nL'errore restituito è: '"+err.Error()+"'.")
 			return fmt.Errorf("[*CACHE_ERROR*] -> Impossibile inserire il file in cache")
 		}
 	}
 	if fileCreated {
-		utils.PrintEvent("CACHE_SUCCESS", "File "+fileName+" caricato localmente con successo")
+		utils.PrintEvent("CACHE_SUCCESS", "File '"+fileName+"' caricato localmente con successo")
 	} else {
-		utils.PrintEvent("CACHE_FAILURE", "Impossibile caricare localmente il File "+fileName)
+		utils.PrintEvent("CACHE_FAILURE", "Qualcosa è andato storto.\r\nImpossibile caricare localmente il File '"+fileName+"'.")
 	}
 	return nil
 }

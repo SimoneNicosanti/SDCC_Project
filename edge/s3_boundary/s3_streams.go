@@ -5,7 +5,6 @@ import (
 	"edge/proto/client"
 	"fmt"
 	"io"
-	"log"
 )
 
 type DownloadStream struct {
@@ -28,10 +27,10 @@ func (u *UploadStream) Read(p []byte) (n int, err error) {
 
 	if len(u.ResidualChunk) > 0 {
 		// Parte del chunk precedente deve essere consumata
-		log.Println("[*UPLOAD*] -> Letto da Residuo")
+		//utils.PrintEvent("UPLOAD_RCV", "Letto da Residuo")
 		fileChunk = u.ResidualChunk
 	} else {
-		log.Println("[*UPLOAD*] -> Letto da Canale")
+		//utils.PrintEvent("UPLOAD_RCV", "Letto da Canale")
 		chunkMessage, err := u.ClientStream.Recv()
 		if err == io.EOF {
 			return 0, io.EOF
@@ -72,7 +71,7 @@ func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
 		d.FileChannel <- errorHash[:]
 		return 0, fmt.Errorf("[*ERROR*] -> Stream redirection to client encountered some problems")
 	}
-	log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+	//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
 	chunkCopy := make([]byte, len(p)) // IMPORTANTE
 	copy(chunkCopy, p)
 	d.FileChannel <- chunkCopy

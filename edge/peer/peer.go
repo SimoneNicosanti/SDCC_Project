@@ -41,7 +41,7 @@ func ActAsPeer() {
 	edgePeerPtr := new(EdgePeer)
 	errorMessage, err := registerServiceForEdge(ipAddr, edgePeerPtr)
 	utils.ExitOnError(errorMessage, err)
-	utils.PrintEvent("PEER_OK", "Servizio registrato correttamente")
+	utils.PrintEvent("SERVER_SERVICE_OK", "Servizio registrato correttamente")
 
 	registerGRPC()
 
@@ -51,7 +51,7 @@ func ActAsPeer() {
 	registryClient = registryClientPtr
 
 	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server: "+errorMessage, err)
-	utils.PrintEvent("OK", "Servizio registrato su server Registry")
+	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
 
 	utils.PrintEvent("NEIGHBOURS_RECEIVED", "Vicini restituiti dal server Registry:\r\n"+fmt.Sprintln(*adj)) //Vicini restituiti dal server Registry
 
@@ -78,7 +78,8 @@ func registerGRPC() {
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 
-	peerFileServer.IpAddr = serverEndpoint
+	peerFileServer = PeerFileServer{IpAddr: serverEndpoint}
+	//peerFileServer.IpAddr = serverEndpoint
 
 	grpcServer := grpc.NewServer()
 	client.RegisterEdgeFileServiceServer(grpcServer, &peerFileServer)
@@ -168,8 +169,7 @@ func notifyBloomFiltersToAdjacents() error {
 		filterMessage := BloomFilterMessage{EdgePeer: SelfPeer, BloomFilter: filterEncode}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		if err != nil {
-			utils.PrintEvent("BLOOM_ERROR", "impossibile inviare filtro a "+edgePeer.PeerAddr)
-			log.Println(err.Error())
+			utils.PrintEvent("BLOOM_ERROR", "impossibile inviare filtro a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
 			return err
 		}
 	}
@@ -189,38 +189,37 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (PeerFileServer
 	doneChannel := make(chan *rpc.Call, maxContactable)
 	contactedNum := 0
 
-	// Contattiamo solo i vicini positivi ai filtri
+	// Contattiamo solo i vicini positivi ai filtri (tranne il mittente originario)
 	for adj := range adjacentsMap.peerConns {
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
 			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
-				if adj != fileRequestMessage.SenderPeer {
-					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr)
-					contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+				contacted := contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+				if contacted {
+					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr+" per filtro di Bloom")
 					contactedNum++
-				}
-				if contactedNum == maxContactable {
-					break
+					if contactedNum == maxContactable {
+						break
+					}
 				}
 			}
 		}
 	}
 
-	// Contattiamo (come rimanenti) alcuni vicini a caso con i filtri negativi
+	// Contattiamo (come rimanenti) alcuni vicini a caso con i filtri negativi (tranne il mittente originario)
 	if contactedNum < maxContactable {
-		falseFiltersNeighbours := findFalseAdjacentsFilter(fileRequestMessage.FileName, fileRequestMessage.SenderPeer)
-		log.Println(falseFiltersNeighbours)
+		falseFiltersNeighbours := findFalseAdjacentsFilter(fileRequestMessage.FileName)
 		for i := 0; i < (maxContactable - contactedNum); i++ {
 			if len(falseFiltersNeighbours) == 0 {
 				break
 			}
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-
-			utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr)
-			contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
-			contactedNum++
-
+			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
+			if contacted {
+				utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr+" per complemento")
+				contactedNum++
+			}
 			falseFiltersNeighbours = append(falseFiltersNeighbours[0:randomInt], falseFiltersNeighbours[randomInt+1:]...)
 		}
 	}
@@ -228,31 +227,36 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (PeerFileServer
 	// Aspettiamo la prima risposta
 	// TODO Vedere se ritornare il canale anziché il primo che risponde: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
 	for i := 0; i < contactedNum; i++ {
-		utils.PrintEvent("LOOKUP_WAIT", "Attesa di risposte")
 		neighbourCall := <-doneChannel
 		err := neighbourCall.Error
 		if err == nil {
-			return neighbourCall.Reply.(PeerFileServer), nil
+			ownerPeerPtr := neighbourCall.Reply.(*PeerFileServer)
+			utils.PrintEvent("LOOKUP_RESPONSE_OK", "Ricevuta risposta da "+ownerPeerPtr.IpAddr)
+			return *ownerPeerPtr, nil
+		} else {
+			utils.PrintEvent("LOOKUP_RESPONSE_ERR", "Ricevuta risposta negativa.")
 		}
-		utils.PrintEvent("LOOKUP_UNLOCK", "Ricevuta risposta")
 	}
-
 	return PeerFileServer{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 
 }
 
-func findFalseAdjacentsFilter(fileName string, senderPeer EdgePeer) []EdgePeer {
+func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 	falseAdjacentsList := make([]EdgePeer, 0)
 	for adj, adjFilter := range adjacentsMap.filterMap {
-		if !adjFilter.Test([]byte(fileName)) && adj != senderPeer {
+		if !adjFilter.Test([]byte(fileName)) {
 			falseAdjacentsList = append(falseAdjacentsList, adj)
 		}
 	}
 	return falseAdjacentsList
 }
 
-func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer, doneChannel chan *rpc.Call) {
-	ownerPeerPtr := new(EdgePeer)
-	adjConn := adjacentsMap.peerConns[adj]
-	adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, ownerPeerPtr, doneChannel)
+func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer, doneChannel chan *rpc.Call) bool {
+	if adj != fileRequestMessage.SenderPeer {
+		ownerPeerPtr := new(PeerFileServer)
+		adjConn := adjacentsMap.peerConns[adj]
+		adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, ownerPeerPtr, doneChannel)
+		return true
+	}
+	return false
 }

@@ -7,6 +7,7 @@ import (
 	"edge/proto/client"
 	"edge/s3_boundary"
 	"edge/utils"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -55,10 +56,10 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	//go cache.WriteChunksOnFile(fileChannel, file_name)
 	err = s3_boundary.SendToS3(file_name, uploadStreamReader)
 	if err != nil {
-		log.Println("[*ERROR*] - File Upload to S3 encountered some error")
+		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nTICKET: '%s'", file_name, ticketID))
 		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), "[*ERROR*] - File Upload to S3 encountered some error")
 	}
-	log.Printf("[*SUCCESS*] - File '%s' caricato con successo [TICKET_ID: %s]\r\n", file_name, ticketID)
+	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nTICKET: '%s'", file_name, ticketID))
 	response := client.Response{TicketId: ticketID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
@@ -70,7 +71,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 
 // TODO impostare un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
-	utils.PrintEvent("CLIENT_DOWNLOAD", "Ricevuta richiesta per file "+requestMessage.FileName)
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", "Ricevuta richiesta di download per file '"+requestMessage.FileName+"'.")
 	isValidRequest := checkTicket(requestMessage.TicketId)
 	if isValidRequest == -1 {
 		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
@@ -79,7 +80,7 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 
 	_, err := os.Stat("/files/" + requestMessage.FileName)
 	if os.IsNotExist(err) {
-		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
+		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer, ForwarderPeer: peer.SelfPeer}
 		ownerEdge, err := peer.NeighboursFileLookup(fileRequest)
 
 		fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
@@ -88,9 +89,8 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 		go cache.GetCache().InsertFileInCache(fileChannel, requestMessage.FileName, 0)
 
 		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
-			log.Printf("[*NETWORK*] -> file '%s' found in edge %s", requestMessage.FileName, ownerEdge.IpAddr)
+			utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", requestMessage.FileName, ownerEdge.IpAddr))
 			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel)
-
 		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
 			// log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
 			// s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel}
@@ -103,13 +103,13 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> S3 DISABILITATO")
 		}
 	} else if err == nil { // ce l'ha l'edge corrente --> Leggi file e invia chunk
-		log.Printf("[*CACHE*] -> File '%s' found in cache", requestMessage.FileName)
+		utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache", requestMessage.FileName))
 		return sendFromLocalFileStream(requestMessage, downloadStream)
 	} else { //Got an error
 		// TODO Aggiungere errore per path sbagliato
 		return err
 	}
-	log.Println("[*SUCCESS*] -> Invio del file '" + requestMessage.FileName + "' Completata")
+	utils.PrintEvent("DOWNLOAD_SUCCESS", fmt.Sprintf("Invio del file '%s' Completata", requestMessage.FileName))
 	return nil
 }
 
