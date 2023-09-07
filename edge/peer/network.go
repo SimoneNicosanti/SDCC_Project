@@ -10,24 +10,28 @@ import (
 // TODO Aggiungere logica per cui se il Ping fallisce per x volte allora è dato per morto
 // TODO Aggiungere logica per cui se ricevo Ping da un nodo che non è mio vicino allora lo aggiungo perché lo avevo dato per morto
 func pingsToAdjacents() {
-	PING_FREQUENCY := utils.GetIntegerEnvironmentVariable("PING_FREQUENCY")
+	PING_FREQUENCY := utils.GetIntEnvironmentVariable("PING_FREQUENCY")
 	for {
 		time.Sleep(time.Duration(PING_FREQUENCY) * time.Second)
-		adjacentsMap.connsMutex.Lock()
-		for adjPeer, adjConn := range adjacentsMap.peerConns {
-			err := adjConn.Call("EdgePeer.Ping", SelfPeer, new(int))
-			if err != nil {
-				// Il peer non risponde al Ping --> Rimozione dalla lista
-				adjacentsMap.peerConns[adjPeer].Close()
-				delete(adjacentsMap.peerConns, adjPeer)
-			}
+		pingFunction()
+	}
+}
+
+func pingFunction() {
+	adjacentsMap.connsMutex.Lock()
+	defer adjacentsMap.connsMutex.Unlock()
+	for adjPeer, adjConn := range adjacentsMap.peerConns {
+		err := adjConn.Call("EdgePeer.Ping", SelfPeer, new(int))
+		if err != nil {
+			// Il peer non risponde al Ping --> Rimozione dalla lista
+			adjacentsMap.peerConns[adjPeer].Close()
+			delete(adjacentsMap.peerConns, adjPeer)
 		}
-		adjacentsMap.connsMutex.Unlock()
 	}
 }
 
 func heartbeatToRegistry() {
-	HEARTBEAT_FREQUENCY := utils.GetIntegerEnvironmentVariable("HEARTBEAT_FREQUENCY")
+	HEARTBEAT_FREQUENCY := utils.GetIntEnvironmentVariable("HEARTBEAT_FREQUENCY")
 	for {
 		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 		heartbeatFunction()

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"edge/cache"
 	"edge/proto/client"
 	"edge/utils"
 	"encoding/json"
@@ -90,7 +91,7 @@ func setupRabbitMQ() {
 func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
 	authorizedTicketIDs = AuthorizedTicketIDs{
 		mutex: sync.RWMutex{},
-		IDs:   make([]string, utils.GetIntegerEnvironmentVariable("EDGE_TICKETS_NUM")),
+		IDs:   make([]string, utils.GetIntEnvironmentVariable("EDGE_TICKETS_NUM")),
 	}
 	for i := 0; i < len(authorizedTicketIDs.IDs); i++ {
 		err := publishNewTicket(i)
@@ -99,6 +100,7 @@ func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
 }
 
 func ActAsServer() {
+	cache.GetCache().ActivateCacheRecovery()
 	setUpGRPC()
 	setupRabbitMQ()
 	publishAllTicketsOnQueue(rabbitChannel)
@@ -113,7 +115,7 @@ func setUpGRPC() {
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 	opts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(utils.GetIntegerEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
+		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})

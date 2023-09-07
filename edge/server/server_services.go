@@ -32,7 +32,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	}
 	ticketID := md.Get("ticket_id")[0]
 	file_name := md.Get("file_name")[0]
-	file_size, err := strconv.Atoi(md.Get("file_size")[0])
+	file_size, err := strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
 		log.Println("Impossibile effettuare il cast della size. SIZE = " + md.Get("file_size")[0])
 	}
@@ -44,8 +44,8 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	}
 	defer publishNewTicket(isValidRequest)
 
-	// Salvo prima su file locale o su S3?? PRIMA S3
-	fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
+	// Salvo prima su S3 e poi su file locale
+	fileChannel := make(chan []byte, utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 	defer close(fileChannel)
 
 	isFileCacheable := cache.CheckFileSize(file_size)
@@ -54,6 +54,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	if isFileCacheable {
 		// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
 		go cache.GetCache().InsertFileInCache(fileChannel, file_name, file_size)
+		// go cache.WriteChunksInCache(fileChannel, file_name)
 	}
 
 	err = s3_boundary.SendToS3(file_name, uploadStreamReader)
@@ -80,15 +81,15 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	}
 	defer publishNewTicket(isValidRequest)
 
-	_, err := os.Stat("/files/" + requestMessage.FileName)
+	_, err := os.Stat(utils.GetEnvironmentVariable("FILES_PATH") + requestMessage.FileName)
 	if os.IsNotExist(err) {
-		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntegerEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
+		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
 		lookupReponse, err := peer.NeighboursFileLookup(fileRequest)
 
 		ownerEdge := lookupReponse.OwnerEdge
 		fileSize := lookupReponse.FileSize
 
-		fileChannel := make(chan []byte, utils.GetIntegerEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+		fileChannel := make(chan []byte, utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 		defer close(fileChannel)
 		isFileCacheable := cache.CheckFileSize(fileSize)
 		// TODO Modificare la risposta in modo che torni la size del file!!
@@ -182,7 +183,7 @@ func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.Fil
 }
 
 func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
-	localFile, err := os.Open("/files/" + requestMessage.FileName)
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + requestMessage.FileName)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
 	}
@@ -190,7 +191,7 @@ func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloa
 	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
 	defer localFile.Close()
 
-	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE")
+	chunkSize := utils.GetIntEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := localFile.Read(buffer)

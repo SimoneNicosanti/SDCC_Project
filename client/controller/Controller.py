@@ -15,7 +15,7 @@ sem : Semaphore = Semaphore()
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
     count = 0 
-    if requestType == Method.PUT and not os.path.exists("/files/" + fileName):
+    if requestType == Method.PUT and not os.path.exists(os.environ.get("FILES_PATH") + fileName):
         raise MyErrors.FileNotFound("Il file da caricare non esiste in locale.")
 
     # Otteniamo l'indirizzo del peer da contattare
@@ -118,9 +118,9 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
        
     try:
         # Otteniamo la size del file da inviare
-        file_size = os.path.getsize(filename = "/files/" + filename)
+        file_size = os.path.getsize(filename = os.environ.get("FILES_PATH") + filename)
         # Dividiamo il file in chunks
-        #with open("/files/" + filename, "rb") as file :
+        #with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
         chunks = FileService().getChunks(filename = filename)
         # Effettuiamo la chiamata gRPC
         response = stub.Upload(
@@ -165,7 +165,7 @@ class FileService:
 
     def getChunks(self, filename):
             try:
-                with open("/files/" + filename, "rb") as file :
+                with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
                     chunkSize = int(os.environ.get("CHUNK_SIZE"))
                     chunk = file.read(chunkSize)            
                     while chunk:
@@ -196,7 +196,7 @@ class FileService:
     def downloadFile(self, filename : str, chunk_list) -> bool:
         chunk : FileChunk = next(chunk_list)
         try:
-            with open("/files/" + filename, "wb") as file:
+            with open(os.environ.get("FILES_PATH") + filename, "wb") as file:
                 file.write(chunk.chunk)
                 for chunk in chunk_list:
                     file.write(chunk.chunk)

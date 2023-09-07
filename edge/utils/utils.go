@@ -66,30 +66,32 @@ func GetEnvironmentVariable(variableName string) string {
 	return variableString
 }
 
-func GetIntegerEnvironmentVariable(variableName string) int {
-	variableString := GetEnvironmentVariable(variableName)
-	variableInt, err := strconv.ParseInt(variableString, 10, 64)
+func GetInt64EnvironmentVariable(variableName string) int64 {
+	variableInt64, err := strconv.ParseInt(GetEnvironmentVariable(variableName), 10, 64)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return variableInt64
+}
+
+func GetIntEnvironmentVariable(variableName string) int {
+	variableInt, err := strconv.ParseInt(GetEnvironmentVariable(variableName), 10, 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return int(variableInt)
 }
 
 func GetFloatEnvironmentVariable(variableName string) float64 {
-	variableString := GetEnvironmentVariable(variableName)
-	variableFloat, err := strconv.ParseFloat(variableString, 64)
+	variableFloat, err := strconv.ParseFloat(GetEnvironmentVariable(variableName), 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return variableFloat
 }
 
 func GetUint8EnvironmentVariable(variableName string) uint8 {
-	variableString := GetEnvironmentVariable(variableName)
-	variableUint_8, err := strconv.ParseUint(variableString, 10, 8)
+	variableUint_8, err := strconv.ParseUint(GetEnvironmentVariable(variableName), 10, 8)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return uint8(variableUint_8)
 }
 
 func GetUintEnvironmentVariable(variableName string) uint {
-	variableString := GetEnvironmentVariable(variableName)
-	variableUint, err := strconv.ParseUint(variableString, 10, 32)
+	variableUint, err := strconv.ParseUint(GetEnvironmentVariable(variableName), 10, 32)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return uint(variableUint)
 }
@@ -162,6 +164,6 @@ func stringInSlice(str string, slice []string) bool {
 }
 
 func PrintEvent(title string, content string) {
-	log.Printf("[*" + title + "*]")
+	log.Printf("\033[1;30;47m[*" + title + "*]\033[0m")
 	fmt.Printf(content + "\r\n\r\n")
 }

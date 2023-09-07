@@ -1,6 +1,7 @@
 package peer
 
 import (
+	//"context"
 	"edge/cache"
 	"edge/proto/client"
 	"edge/utils"
@@ -140,7 +141,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 }
 
 func temporizedNotifyBloomFilters() {
-	FILTER_NOTIFY_TIME := utils.GetIntegerEnvironmentVariable("FILTER_NOTIFY_TIME")
+	FILTER_NOTIFY_TIME := utils.GetIntEnvironmentVariable("FILTER_NOTIFY_TIME")
 	for {
 		time.Sleep(time.Duration(FILTER_NOTIFY_TIME) * time.Second)
 		notifyBloomFiltersToAdjacents()
@@ -160,9 +161,11 @@ func notifyBloomFiltersToAdjacents() error {
 		return err
 	}
 
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_CALL")))
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
 		filterMessage := BloomFilterMessage{EdgePeer: SelfPeer, BloomFilter: filterEncode}
 		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
+		//context.WithTimeout()
 		if err != nil {
 			utils.PrintEvent("BLOOM_ERROR", "impossibile inviare filtro a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
 			return err
@@ -182,7 +185,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 
 	fileRequestMessage.ForwarderPeer = SelfPeer
 
-	maxContactable := utils.GetIntegerEnvironmentVariable("MAX_CONTACTABLE_ADJ")
+	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	doneChannel := make(chan *rpc.Call, maxContactable)
 	contactedNum := 0
 

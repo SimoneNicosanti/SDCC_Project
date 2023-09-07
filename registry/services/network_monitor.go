@@ -58,8 +58,10 @@ func removeDeadNode(deadPeer EdgePeer) {
 		delete(otherPeerConnections, deadPeer)
 	}
 
-	deadPeerConn, _ := connectionMap.connections[deadPeer]
-	deadPeerConn.Close()
+	deadPeerConn, isInMap := connectionMap.connections[deadPeer]
+	if isInMap {
+		deadPeerConn.Close()
+	}
 	delete(connectionMap.connections, deadPeer)
 
 	delete(heartbeatMap.heartbeats, deadPeer)

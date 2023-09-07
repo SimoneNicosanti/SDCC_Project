@@ -19,7 +19,7 @@ func SendToS3(fileName string, uploadStreamReader UploadStream) error {
 	sess := getSession()
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
 		d.PartSize = getS3ChunkSize("S3_UPLOAD_CHUNK_SIZE")
-		d.Concurrency = 3 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
+		d.Concurrency = 1 //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 	})
 	_, err := uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), // nome bucket
@@ -45,7 +45,7 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 		return err
 	}
 
-	if fileSize > int64(utils.GetIntegerEnvironmentVariable("CACHE_FILE_MAX_SIZE")) {
+	if fileSize > int64(utils.GetIntEnvironmentVariable("CACHE_FILE_MAX_SIZE")) {
 		//TODO Rispondi solo al file ma non metti in Cache
 	} else {
 		//TODO Metti in cache
@@ -98,7 +98,7 @@ func getFileSize(sess *session.Session, fileName string) (int64, error) {
 }
 
 func getS3ChunkSize(chunkTypeStr string) int64 {
-	envVariable := utils.GetIntegerEnvironmentVariable(chunkTypeStr)
+	envVariable := utils.GetIntEnvironmentVariable(chunkTypeStr)
 	if int64(envVariable) < 5 {
 		return 5 * 1024 * 1024
 	}

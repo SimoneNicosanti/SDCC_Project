@@ -22,7 +22,7 @@ type EdgePeer struct {
 
 type FileLookupResponse struct {
 	OwnerEdge PeerFileServer
-	FileSize  int
+	FileSize  int64
 }
 
 type PeerFileServer struct {
@@ -52,7 +52,7 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	}
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	//utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
+	utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
 	return nil
 }
 
@@ -68,10 +68,8 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.TicketId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
-
-	_, err := os.Stat("/files/" + fileRequestMessage.FileName)
 	fileRequestMessage.TTL--
-	if os.IsNotExist(err) { //file NOT FOUND in local memory :/
+	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
 			NeighboursFileLookup(fileRequestMessage)
 			return fmt.Errorf("[*LOOKUP_CONTINUE*] -> Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad ulteriori vicini", fileRequestMessage.FileName)
@@ -79,11 +77,9 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
 			return fmt.Errorf("[*LOOKUP_END*] -> Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName)
 		}
-	} else if err == nil { //file FOUND in local memory --> i have it! ;)
+	} else { //file FOUND in local memory --> i have it! ;)
 		file_size := cache.GetCache().GetFileSize(fileRequestMessage.FileName)
 		*returnPtr = FileLookupResponse{peerFileServer, file_size}
-	} else { // Got an error :(
-		return err
 	}
 	return nil
 }
@@ -103,7 +99,7 @@ func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
 }
 
 func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownloadRequest, downloadStream client.EdgeFileService_DownloadFromEdgeServer) error {
-	localFile, err := os.Open("/files/" + fileDownloadRequest.FileName)
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileDownloadRequest.FileName)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*OPEN_ERROR*] -> Apertura del file fallita.")
 	}
@@ -112,7 +108,7 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownlo
 	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
 	defer localFile.Close()
 
-	chunkSize := utils.GetIntegerEnvironmentVariable("CHUNK_SIZE")
+	chunkSize := utils.GetIntEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
 	for {
 		n, err := localFile.Read(buffer)
