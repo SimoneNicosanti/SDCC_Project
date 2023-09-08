@@ -66,9 +66,7 @@ func ActAsPeer() {
 	utils.PrintEvent("NEIGHBOURS_RECEIVED", adjacentString)
 
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
-	utils.PrintEvent("HEARTBEAT_STARTED", "Inizio meccanismo di heartbeat verso il server Registry")
-
-	//TODO Far partire il meccanismo di ping
+	go pingsToAdjacents()
 	go temporizedNotifyBloomFilters()
 
 	//Connessione a tutti i vicini
@@ -158,6 +156,7 @@ func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, er
 }
 
 func temporizedNotifyBloomFilters() {
+	utils.PrintEvent("FILTER_NOTIFICATION_STARTED", "Inizio meccanismo di notifica dei filtri di bloom verso i vicini")
 	FILTER_NOTIFY_TIME := utils.GetIntEnvironmentVariable("FILTER_NOTIFY_TIME")
 	for {
 		time.Sleep(time.Duration(FILTER_NOTIFY_TIME) * time.Second)
@@ -184,7 +183,7 @@ func notifyBloomFiltersToAdjacents() error {
 		err := adjConn.peerConnection.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		//context.WithTimeout()
 		if err != nil {
-			utils.PrintEvent("BLOOM_ERROR", "impossibile inviare filtro a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
+			utils.PrintEvent("FILTER_ERROR", "impossibile inviare filtro di bloom a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
 			return err
 		}
 	}

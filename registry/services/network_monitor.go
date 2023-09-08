@@ -1,22 +1,22 @@
 package services
 
 import (
-	"log"
+	"fmt"
 	"registry/utils"
 	"strconv"
 	"time"
 )
 
-func checkForDeadPeers() {
+func checkHeartbeat() {
 	MONITOR_TIMER := utils.GetIntegerEnvironmentVariable("MONITOR_TIMER")
 	HEARTBEAT_THR := utils.GetIntegerEnvironmentVariable("HEARTBEAT_THR")
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
-		checkFunction(float64(HEARTBEAT_THR))
+		checkForDeadPeers(float64(HEARTBEAT_THR))
 	}
 }
 
-func checkFunction(heartbeatThr float64) {
+func checkForDeadPeers(heartbeatThr float64) {
 	peerMap.mutex.Lock()
 	defer peerMap.mutex.Unlock()
 
@@ -24,7 +24,7 @@ func checkFunction(heartbeatThr float64) {
 	for edgePeer, lastHeartbeatTime := range peerMap.heartbeats {
 		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
 			//Il peer viene considerato caduto e viene rimosso dalla rete
-			log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr + "\r\n")
+			utils.PrintEvent("DEAD_PEER_FOUND", fmt.Sprintf("Peer '%s' è morto", edgePeer.PeerAddr))
 			deadPeerConn, isInMap := peerMap.connections[edgePeer]
 			if isInMap {
 				deadPeerConn.Close()
@@ -35,17 +35,6 @@ func checkFunction(heartbeatThr float64) {
 		}
 	}
 	peerMap.heartbeatCheckTime = time.Now()
-}
-
-func removeDeadNode(deadPeer EdgePeer) {
-	// Rimuove un nodo morto dalla rete
-	// Assume che il lock sulle strutture dati sia stato preso dal chiamante
-	deadPeerConn, isInMap := peerMap.connections[deadPeer]
-	if isInMap {
-		deadPeerConn.Close()
-	}
-
-	delete(peerMap.heartbeats, deadPeer)
 }
 
 // Periodically check if network is connected
@@ -66,21 +55,15 @@ func solveNetworkPartitions() {
 	defer peerMap.mutex.Unlock()
 
 	graph := NewGraph()
+	PrintGraph(graph.graph)
 
 	connectedComponents := graph.FindConnectedComponents()
 
 	if len(connectedComponents) > 1 {
-		log.Printf("Trovata partizione di rete\r\n\r\n")
+		utils.PrintEvent("PARTITION_FOUND", "Trovata partizione di rete...")
 		unifyNetwork(connectedComponents)
-		computeAndShowGraph()
 	}
 
-}
-
-func computeAndShowGraph() *Graph {
-	graph := NewGraph()
-	PrintGraph(graph.graph)
-	return graph
 }
 
 // Solves network partitions.
@@ -129,6 +112,9 @@ func findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
 	createdEdge := false
 	neighboursList := map[EdgePeer]byte{}
 	for peer := range peerMap.heartbeats {
+		if peer == edgePeer {
+			continue
+		}
 		// TODO Fare prima shuffle delle chiavi per non legare tutti i nodi al primo che viene restituito
 		var thereIsEdge bool
 		if !createdEdge {

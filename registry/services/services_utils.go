@@ -14,11 +14,6 @@ import (
 
 type RegistryService int
 
-// La seconda mappa è solo per usarla come un Set
-type GraphMap struct {
-	peerMap map[EdgePeer](map[EdgePeer](byte))
-}
-
 type EdgePeer struct {
 	PeerAddr string
 }
@@ -51,16 +46,20 @@ func existsEdge() bool {
 }
 
 func PrintGraph(peerMap map[EdgePeer]map[EdgePeer]byte) {
-	log.Println("\r\nCURRENT GRAPH:")
-	for node, neighbors := range peerMap {
-		fmt.Printf("%s --> [", strings.Split(node.PeerAddr, ".")[3])
+	if len(peerMap) == 0 {
+		utils.PrintEvent("EMPTY_GRAPH", "Graph is empty. No peers in network.")
+	} else {
+		log.Printf("\033[1;30;47m[*CURRENT_GRAPH*]\033[0m\r\n")
+		for node, neighbors := range peerMap {
+			fmt.Printf("%s --> [", strings.Split(node.PeerAddr, ".")[3])
 
-		neighborList := make([]string, 0)
-		for neighbor := range neighbors {
-			neighborList = append(neighborList, strings.Split(neighbor.PeerAddr, ".")[3])
+			neighborList := make([]string, 0)
+			for neighbor := range neighbors {
+				neighborList = append(neighborList, strings.Split(neighbor.PeerAddr, ".")[3])
+			}
+
+			fmt.Printf("%s]\n", strings.Join(neighborList, ", "))
 		}
-
-		fmt.Printf("%s]\n", strings.Join(neighborList, ", "))
+		fmt.Printf("\r\n")
 	}
-	fmt.Printf("\r\n")
 }

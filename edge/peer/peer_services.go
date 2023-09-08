@@ -2,7 +2,6 @@ package peer
 
 import (
 	"edge/cache"
-	"edge/peer"
 	"edge/proto/client"
 	"edge/utils"
 	"fmt"
@@ -37,15 +36,21 @@ func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 
 	_, isPresent := adjacentsMap.peerConns[edgePeer]
 	if !isPresent {
-		peer.ConnectToNode(edgePeer.PeerAddr)
+		conn, err := ConnectToNode(edgePeer.PeerAddr)
+		if err != nil {
+			utils.PrintEvent("PING_RCV_ERROR", fmt.Sprintf("Impossibile aprire connessione verso il nodo '%s'", edgePeer.PeerAddr))
+			return err
+		}
+		adjacentsMap.connsMutex.Lock()
+		adjacentsMap.peerConns[edgePeer] = AdjConnection{peerConnection: conn, missedPing: 0}
+		adjacentsMap.connsMutex.Unlock()
+		utils.PrintEvent("PING_STATUS", fmt.Sprintf("adjacentsMap.peerConns[edgePeer] : \r\n%s", fmt.Sprintln(adjacentsMap.peerConns[edgePeer])))
 	}
 
 	return nil
 }
 
 func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, returnPtr *int) error {
-	adjacentsMap.filtersMutex.Lock()
-	defer adjacentsMap.filtersMutex.Unlock()
 	edgePeer := bloomFilterMessage.EdgePeer
 	edgeFilter := bloom.NewDefaultStableBloomFilter(
 		utils.GetUintEnvironmentVariable("FILTER_N"),
@@ -53,12 +58,14 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	)
 	err := edgeFilter.GobDecode(bloomFilterMessage.BloomFilter)
 	if err != nil {
-		utils.PrintEvent("BLOOM_ERROR", "impossibile decodificare il filtro ricevuto")
+		utils.PrintEvent("FILTER_ERROR", "impossibile decodificare il filtro di bloom ricevuto")
 		return err
 	}
+	adjacentsMap.filtersMutex.Lock()
+	defer adjacentsMap.filtersMutex.Unlock()
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	//utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
+	//utils.PrintEvent("FILTER_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
 	return nil
 }
 

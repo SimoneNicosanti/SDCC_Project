@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -48,16 +47,16 @@ func ActAsRegistry() {
 		utils.ExitOnError("Impossibile mettersi in ascolto sulla porta", err)
 	}
 
-	fmt.Println("Waiting for connections...\r\n")
+	utils.PrintEvent("REGISTRY_STARTED", "Waiting for connections...")
 
 	// go monitorNetwork()
 	go http.Serve(list, nil)
-	go checkForDeadPeers()
+	go checkHeartbeat()
 	go monitorNetwork()
 }
 
 func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]byte) error {
-	log.Println("Entered " + edgePeer.PeerAddr + "\r\n")
+	utils.PrintEvent("PEER_ENTERED", fmt.Sprintf("Nuovo peer '%s' rilevato!", edgePeer.PeerAddr))
 
 	peerMap.mutex.Lock()
 	defer peerMap.mutex.Unlock()
@@ -84,11 +83,11 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 	_, ok := peerMap.heartbeats[heartbeatMessage.EdgePeer]
 	if !ok {
 		// Il peer non è presente nel sistema --> Era stato tolto oppure ho un recupero dal fallimento
-		log.Println("Trovato Peer Attivo >>> " + edgePeer.PeerAddr + "\r\n")
+		utils.PrintEvent("ALIVE_PEER_FOUND", fmt.Sprintf("Peer '%s' è attivo!", edgePeer.PeerAddr))
 
 		peerConn, err := connectToNode(edgePeer)
 		if err != nil {
-			log.Println("Errore connessione al Peer >> " + edgePeer.PeerAddr + "\r\n")
+			utils.PrintEvent("PEER_CONN_ERR", fmt.Sprintf("Errore nel tentativo di connessione al peer '%s'!", edgePeer.PeerAddr))
 			return err
 		}
 

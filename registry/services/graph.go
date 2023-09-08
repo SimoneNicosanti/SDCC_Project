@@ -11,6 +11,7 @@ type Graph struct {
 
 func NewGraph() *Graph {
 	graph := new(Graph)
+	graph.graph = map[EdgePeer](map[EdgePeer]byte){}
 	buildGraph(graph)
 	return graph
 }
@@ -43,10 +44,12 @@ func buildGraph(graph *Graph) {
 	// Trasformiamo il grafo diretto in uno non diretto
 	for node, nodeAdjs := range graph.graph {
 		for adj := range nodeAdjs {
-			graph.graph[adj][node] = 0
+			_, isInGraph := graph.graph[adj]
+			if isInGraph {
+				graph.graph[adj][node] = 0
+			}
 		}
 	}
-
 }
 
 func (g *Graph) AddNodeAndConnections(node EdgePeer, neighbours map[EdgePeer]byte) {
