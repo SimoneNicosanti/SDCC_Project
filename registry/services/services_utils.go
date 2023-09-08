@@ -16,7 +16,6 @@ type RegistryService int
 
 // La seconda mappa è solo per usarla come un Set
 type GraphMap struct {
-	mutex   sync.RWMutex
 	peerMap map[EdgePeer](map[EdgePeer](byte))
 }
 
@@ -24,20 +23,15 @@ type EdgePeer struct {
 	PeerAddr string
 }
 
-type ConnectionMap struct {
-	mutex       sync.RWMutex
-	connections map[EdgePeer](*rpc.Client)
-}
-
-type HeartbeatMap struct {
-	mutex       sync.RWMutex
-	lastChecked time.Time
-	heartbeats  map[EdgePeer](time.Time)
+type PeerMap struct {
+	mutex              sync.RWMutex
+	connections        map[EdgePeer](*rpc.Client)
+	heartbeatCheckTime time.Time
+	heartbeats         map[EdgePeer](time.Time)
 }
 
 type HeartbeatMessage struct {
-	EdgePeer       EdgePeer
-	NeighboursList map[EdgePeer]byte
+	EdgePeer EdgePeer
 }
 
 func connectToNode(edgePeer EdgePeer) (*rpc.Client, error) {

@@ -119,6 +119,6 @@ func setUpGRPC() {
 	}
 	grpcServer := grpc.NewServer(opts...)
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	utils.PrintEvent("GRPC SERVER STARTED", "Server Endpoint : "+serverEndpoint)
+	utils.PrintEvent("GRPC_SERVER_STARTED", "Server Endpoint : "+serverEndpoint)
 	go grpcServer.Serve(lis)
 }

@@ -12,59 +12,40 @@ func checkForDeadPeers() {
 	HEARTBEAT_THR := utils.GetIntegerEnvironmentVariable("HEARTBEAT_THR")
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
-
-		heartbeatMap.mutex.Lock()
-		graphMap.mutex.Lock()
-		connectionMap.mutex.Lock()
-		lastCheckTime := heartbeatMap.lastChecked
-		for edgePeer, lastHeartbeatTime := range heartbeatMap.heartbeats {
-			if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > float64(HEARTBEAT_THR) {
-				//Il peer viene considerato caduto e viene rimosso dalla rete
-				log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr + "\r\n")
-				removeDeadNode(edgePeer)
-				PrintGraph(graphMap.peerMap)
-			}
-		}
-		heartbeatMap.lastChecked = time.Now()
-
-		// Se c'è stato il recupero, allora tutti quanti devono avermi mandato heartbeat da quando ho recuperato
-		// Se qualcuno non l'ha fatto ed è caduto, potrebbe essere presente nella lista degli archi mandata dagli altri
-		// Quindi devo rimuoverlo dal grafo
-		// Nelle altre strutture dati non c'è perché viene aperta connessione / aperto heartbeat solo se è stato
-		// ricevuti il primo heartbeat
-		// TODO Ricontrolla se serve (NB: potrebbe servire per evitare inconsistenza ed eventuali controlli errati sulle componenti connesse)
-		for _, peerEdges := range graphMap.peerMap {
-			for neighbourPeer := range peerEdges {
-				_, isInMap := graphMap.peerMap[neighbourPeer]
-				if !isInMap {
-					removeDeadNode(neighbourPeer)
-				}
-			}
-		}
-
-		connectionMap.mutex.Unlock()
-		graphMap.mutex.Unlock()
-		heartbeatMap.mutex.Unlock()
+		checkFunction(float64(HEARTBEAT_THR))
 	}
+}
 
+func checkFunction(heartbeatThr float64) {
+	peerMap.mutex.Lock()
+	defer peerMap.mutex.Unlock()
+
+	lastCheckTime := peerMap.heartbeatCheckTime
+	for edgePeer, lastHeartbeatTime := range peerMap.heartbeats {
+		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
+			//Il peer viene considerato caduto e viene rimosso dalla rete
+			log.Println("Trovato Peer Morto >>> " + edgePeer.PeerAddr + "\r\n")
+			deadPeerConn, isInMap := peerMap.connections[edgePeer]
+			if isInMap {
+				deadPeerConn.Close()
+				delete(peerMap.connections, edgePeer)
+			}
+			delete(peerMap.heartbeats, edgePeer)
+			//PrintGraph(graphMap.peerMap)
+		}
+	}
+	peerMap.heartbeatCheckTime = time.Now()
 }
 
 func removeDeadNode(deadPeer EdgePeer) {
 	// Rimuove un nodo morto dalla rete
 	// Assume che il lock sulle strutture dati sia stato preso dal chiamante
-	delete(graphMap.peerMap, deadPeer)
-
-	for _, otherPeerConnections := range graphMap.peerMap {
-		delete(otherPeerConnections, deadPeer)
-	}
-
-	deadPeerConn, isInMap := connectionMap.connections[deadPeer]
+	deadPeerConn, isInMap := peerMap.connections[deadPeer]
 	if isInMap {
 		deadPeerConn.Close()
 	}
-	delete(connectionMap.connections, deadPeer)
 
-	delete(heartbeatMap.heartbeats, deadPeer)
+	delete(peerMap.heartbeats, deadPeer)
 }
 
 // Periodically check if network is connected
@@ -81,24 +62,29 @@ func monitorNetwork() {
 // Checks for network partitions and solve them if any is found
 func solveNetworkPartitions() {
 	// Is a different function because network partitions solve is necessary for PeerExit and for PeerCrash too
-	graphMap.mutex.Lock()
-	defer graphMap.mutex.Unlock()
-	connectionMap.mutex.RLock()
-	defer connectionMap.mutex.RUnlock()
-	connectedComponents := FindConnectedComponents(graphMap.peerMap)
+	peerMap.mutex.Lock()
+	defer peerMap.mutex.Unlock()
+
+	graph := NewGraph()
+
+	connectedComponents := graph.FindConnectedComponents()
 
 	if len(connectedComponents) > 1 {
 		log.Printf("Trovata partizione di rete\r\n\r\n")
 		unifyNetwork(connectedComponents)
-		PrintGraph(graphMap.peerMap)
+		computeAndShowGraph()
 	}
 
 }
 
-/*
-Solves network partitions.
-Network partitions are solved connecting two consecutive components in components array
-*/
+func computeAndShowGraph() *Graph {
+	graph := NewGraph()
+	PrintGraph(graph.graph)
+	return graph
+}
+
+// Solves network partitions.
+// Network partitions are solved connecting two consecutive components in components array
 func unifyNetwork(connectedComponents [][]EdgePeer) {
 
 	for componentIndex := 0; componentIndex < len(connectedComponents)-1; componentIndex++ {
@@ -123,11 +109,9 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 			if thereIsEdge {
 				// TODO Decidere se l'aggiornamento della rete viene fatto prima o dopo:
 				// se fatto prima potrebbero fallire le call, se fatto dopo potrebbe essere inconsistente la rete
-				graphMap.peerMap[firstCompNode][secondCompNode] = 0
-				graphMap.peerMap[secondCompNode][firstCompNode] = 0
 
-				firstNodeConn := connectionMap.connections[firstCompNode]
-				secondNodeConn := connectionMap.connections[secondCompNode]
+				firstNodeConn := peerMap.connections[firstCompNode]
+				secondNodeConn := peerMap.connections[secondCompNode]
 
 				err_1 := firstNodeConn.Call("EdgePeer.AddNeighbour", secondCompNode, nil)
 				err_2 := secondNodeConn.Call("EdgePeer.AddNeighbour", firstCompNode, nil)
@@ -144,7 +128,7 @@ func findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
 	// peerNum := len(graphMap.peerMap)
 	createdEdge := false
 	neighboursList := map[EdgePeer]byte{}
-	for peer := range graphMap.peerMap {
+	for peer := range peerMap.heartbeats {
 		// TODO Fare prima shuffle delle chiavi per non legare tutti i nodi al primo che viene restituito
 		var thereIsEdge bool
 		if !createdEdge {

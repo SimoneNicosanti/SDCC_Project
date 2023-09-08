@@ -3,6 +3,7 @@ package utils
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -65,4 +66,9 @@ func GetIntegerEnvironmentVariable(variableName string) int {
 	variableInt, err := strconv.ParseInt(variableString, 10, 64)
 	ExitOnError("Impossibile convertire la variabile "+variableName, err)
 	return int(variableInt)
+}
+
+func PrintEvent(title string, content string) {
+	log.Printf("\033[1;30;47m[*" + title + "*]\033[0m")
+	fmt.Printf(content + "\r\n\r\n")
 }

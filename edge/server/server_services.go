@@ -34,7 +34,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	file_name := md.Get("file_name")[0]
 	file_size, err := strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
-		log.Println("Impossibile effettuare il cast della size. SIZE = " + md.Get("file_size")[0])
+		utils.PrintEvent("CAST_ERR", "Impossibile effettuare il cast della size. SIZE = "+md.Get("file_size")[0])
 	}
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", "Ricevuta richiesta di upload per file '"+file_name+"'.")
 
@@ -60,13 +60,13 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	err = s3_boundary.SendToS3(file_name, uploadStreamReader)
 	if err != nil {
 		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nTICKET: '%s'", file_name, ticketID))
-		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), "[*ERROR*] - File Upload to S3 encountered some error")
+		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
 	}
 	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nTICKET: '%s'", file_name, ticketID))
 	response := client.Response{TicketId: ticketID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Couldn't close clientstream")
+		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close clientstream.\r\nError: '%s'", err.Error()))
 	}
 
 	return nil
@@ -100,7 +100,10 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 
 		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
 			utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", requestMessage.FileName, ownerEdge.IpAddr))
-			sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel, isFileCacheable)
+			err := sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel, isFileCacheable)
+			if err != nil {
+				utils.PrintEvent("SEND_FROM_EDGE_ERROR", err.Error())
+			}
 		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
 			// log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
 			// s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel, WriteOnChannel: isFileCacheable}
@@ -108,7 +111,7 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			// if err != nil {
 			// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 			// 	fileChannel <- errorHash[:]
-			// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> Couldn't locate requested file in specified bucket")
+			// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Couldn't locate requested file in specified bucket.\r\nError: '%s'", err.Error()))
 			// }
 			return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> S3 DISABILITATO")
 		}
@@ -125,11 +128,15 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.FileDownloadRequest, clientDownloadStream client.FileService_DownloadServer, fileChannel chan []byte, writeOnChannel bool) error {
 	// 1] Open gRPC connection to ownerEdge
 	// 2] retrieve chunk by chunk (send to client + save in local)
-	conn, err := grpc.Dial(ownerEdge.IpAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := []grpc.DialOption{
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE"))), // Imposta la nuova dimensione massima
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
 		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 		fileChannel <- errorHash[:]
-		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to Dial edge via gRPC")
+		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
 	}
 	grpcClient := client.NewEdgeFileServiceClient(conn)
 	context := context.Background()
@@ -137,26 +144,8 @@ func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.Fil
 	if err != nil {
 		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 		fileChannel <- errorHash[:]
-		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to setup edge download stream via gRPC")
+		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
 	}
-
-	// Retrieve file_size from grpc metadata
-	// metadata, ok := metadata.FromIncomingContext(context)
-
-	// if !ok {
-	// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-	// 	fileChannel <- errorHash[:]
-	// 	utils.PrintEvent("METADATA_ERROR", "metadati non ricevuti")
-	// 	return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to get metadata from context")
-	// }
-
-	// file_size, err := strconv.Atoi(metadata.Get("FILE_SIZE")[0])
-	// if err != nil {
-	// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-	// 	fileChannel <- errorHash[:]
-	// 	utils.PrintEvent("METADATA_ERROR", "impossibile effettuare il casting dei metadati")
-	// 	return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), "[*ERROR*] - Failed while trying to cast metadata")
-	// }
 
 	for {
 		edgeChunk, err := edgeDownloadStream.Recv()
@@ -166,7 +155,7 @@ func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.Fil
 		if err != nil {
 			errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 			fileChannel <- errorHash[:]
-			return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), "[*ERROR*] - Failed while receiving chunks from other edge via gRPC")
+			return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Failed while receiving chunks from other edge via gRPC.\r\nError: '%s'", err.Error()))
 		}
 		clientDownloadStream.Send(&client.FileChunk{Chunk: edgeChunk.Chunk})
 
@@ -185,7 +174,7 @@ func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.Fil
 func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
 	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + requestMessage.FileName)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] - File opening failed")
+		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
 	}
 	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
 	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
@@ -199,7 +188,7 @@ func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloa
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*ERROR*] - Failed during read operation\r")
+			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))
 		}
 		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
 	}

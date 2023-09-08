@@ -48,11 +48,25 @@ func ActAsPeer() {
 
 	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server: "+errorMessage, err)
 	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
-
-	utils.PrintEvent("NEIGHBOURS_RECEIVED", "Vicini restituiti dal server Registry:\r\n"+fmt.Sprintln(*adj)) //Vicini restituiti dal server Registry
+	adjacentString := ""
+	howManyAdj := len(*adj)
+	currentAdj := 0
+	if howManyAdj == 0 {
+		adjacentString = "Nessun vicino a cui connettersi..."
+	} else {
+		adjacentString = "Vicini restituiti dal server Registry:\r\n"
+		for adjacent := range *adj {
+			adjacentString += "[*] " + adjacent.PeerAddr
+			currentAdj++
+			if currentAdj < howManyAdj {
+				adjacentString += "\r\n"
+			}
+		}
+	}
+	utils.PrintEvent("NEIGHBOURS_RECEIVED", adjacentString)
 
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
-	utils.PrintEvent("HEARTBEAT", "Inizio meccanismo di heartbeat verso il server Registry")
+	utils.PrintEvent("HEARTBEAT_STARTED", "Inizio meccanismo di heartbeat verso il server Registry")
 
 	//TODO Far partire il meccanismo di ping
 	go temporizedNotifyBloomFilters()
@@ -73,11 +87,14 @@ func registerGRPC() {
 	serverEndpoint := fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
 	lis, err := net.Listen("tcp", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
-
-	peerFileServer = PeerFileServer{IpAddr: serverEndpoint}
 	//peerFileServer.IpAddr = serverEndpoint
 
-	grpcServer := grpc.NewServer()
+	opts := []grpc.ServerOption{
+		//grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
+		grpc.MaxSendMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
+	}
+	peerFileServer = PeerFileServer{IpAddr: serverEndpoint}
+	grpcServer := grpc.NewServer(opts...)
 	client.RegisterEdgeFileServiceServer(grpcServer, &peerFileServer)
 
 	utils.PrintEvent("GRPC_SERVER_STARTED", "Server Endpoint : "+SelfPeer.PeerAddr)
@@ -164,7 +181,7 @@ func notifyBloomFiltersToAdjacents() error {
 	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_CALL")))
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
 		filterMessage := BloomFilterMessage{EdgePeer: SelfPeer, BloomFilter: filterEncode}
-		err := adjConn.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
+		err := adjConn.peerConnection.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
 		//context.WithTimeout()
 		if err != nil {
 			utils.PrintEvent("BLOOM_ERROR", "impossibile inviare filtro a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
@@ -252,7 +269,7 @@ func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer
 	if adj != fileRequestMessage.SenderPeer {
 		fileLookupResponsePtr := new(FileLookupResponse)
 		adjConn := adjacentsMap.peerConns[adj]
-		adjConn.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
+		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
 		return true
 	}
 	return false

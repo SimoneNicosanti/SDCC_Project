@@ -1,8 +1,61 @@
 package services
 
-func FindConnectedComponents(peerMap map[EdgePeer](map[EdgePeer]byte)) [][]EdgePeer {
+import (
+	"fmt"
+	"registry/utils"
+)
+
+type Graph struct {
+	graph map[EdgePeer](map[EdgePeer]byte)
+}
+
+func NewGraph() *Graph {
+	graph := new(Graph)
+	buildGraph(graph)
+	return graph
+}
+
+func buildGraph(graph *Graph) {
+	// Ottenimento dello stato attuale della rete
+	for peer, conn := range peerMap.connections {
+		_, hasHeartbeat := peerMap.heartbeats[peer]
+		if hasHeartbeat {
+			neighboursPtr := new(map[EdgePeer]byte)
+			err := conn.Call("EdgePeer.GetNeighbours", 0, neighboursPtr)
+			if err != nil {
+				utils.PrintEvent("GRAPH_ERROR", fmt.Sprintf("Ottenimento vicini del nodo '%s' non riuscita", peer.PeerAddr))
+				continue
+			}
+			graph.AddNodeAndConnections(peer, *neighboursPtr)
+		}
+	}
+
+	// Rimozione dei nodi che non hanno heartbeat
+	for _, nodeAdjs := range graph.graph {
+		for adj := range nodeAdjs {
+			_, hasHeartbeat := peerMap.heartbeats[adj]
+			if !hasHeartbeat {
+				delete(nodeAdjs, adj)
+			}
+		}
+	}
+
+	// Trasformiamo il grafo diretto in uno non diretto
+	for node, nodeAdjs := range graph.graph {
+		for adj := range nodeAdjs {
+			graph.graph[adj][node] = 0
+		}
+	}
+
+}
+
+func (g *Graph) AddNodeAndConnections(node EdgePeer, neighbours map[EdgePeer]byte) {
+	g.graph[node] = neighbours
+}
+
+func (g *Graph) FindConnectedComponents() [][]EdgePeer {
 	visitedMap := make(map[EdgePeer](bool))
-	for edge := range peerMap {
+	for edge := range g.graph {
 		visitedMap[edge] = false
 	}
 
@@ -10,7 +63,7 @@ func FindConnectedComponents(peerMap map[EdgePeer](map[EdgePeer]byte)) [][]EdgeP
 	connectedComponents := make([][]EdgePeer, 0)
 	for peer, visited := range visitedMap {
 		if !visited {
-			foundPeers := recursiveConnectedComponentsResearch(peerMap, peer, visitedMap)
+			foundPeers := g.recursiveConnectedComponentsResearch(peer, visitedMap)
 			foundPeers = append(foundPeers, peer)
 			connectedComponents = append(connectedComponents, foundPeers)
 		}
@@ -20,16 +73,16 @@ func FindConnectedComponents(peerMap map[EdgePeer](map[EdgePeer]byte)) [][]EdgeP
 }
 
 // Recursive search for connected components
-func recursiveConnectedComponentsResearch(peerMap map[EdgePeer](map[EdgePeer]byte), peer EdgePeer, visitedMap map[EdgePeer](bool)) []EdgePeer {
+func (g *Graph) recursiveConnectedComponentsResearch(peer EdgePeer, visitedMap map[EdgePeer](bool)) []EdgePeer {
 	visitedMap[peer] = true
 	foundPeers := make([]EdgePeer, 0)
-	peerNeighbours := peerMap[peer]
+	peerNeighbours := g.graph[peer]
 	for neighbour := range peerNeighbours {
 		visited, isInMap := visitedMap[neighbour]
 		// Non è detto che il nodo sia chiave nel grafo
 		// Quando mi arriva heartbeat dopo ripresa del registry, il nodo mi dice i suoi vicini, ma io aggiungo solo il nodo da cui ho ricevuto heartbeat
 		if !visited && isInMap {
-			neighboursOfNeighbour := recursiveConnectedComponentsResearch(peerMap, neighbour, visitedMap)
+			neighboursOfNeighbour := g.recursiveConnectedComponentsResearch(neighbour, visitedMap)
 			for index := range neighboursOfNeighbour {
 				foundPeers = append(foundPeers, neighboursOfNeighbour[index])
 				// TODO Controlla che gli elementi nella lista non siano duplicati

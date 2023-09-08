@@ -21,11 +21,19 @@ func pingFunction() {
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 	for adjPeer, adjConn := range adjacentsMap.peerConns {
-		err := adjConn.Call("EdgePeer.Ping", SelfPeer, new(int))
+		err := adjConn.peerConnection.Call("EdgePeer.Ping", SelfPeer, new(int))
 		if err != nil {
-			// Il peer non risponde al Ping --> Rimozione dalla lista
-			adjacentsMap.peerConns[adjPeer].Close()
-			delete(adjacentsMap.peerConns, adjPeer)
+			adjPeerConnection, _ := adjacentsMap.peerConns[adjPeer]
+			adjPeerConnection.missedPing++
+			// Il peer non risponde al Ping per X volte consecutive --> Rimozione dalla lista
+			if adjPeerConnection.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
+				adjacentsMap.peerConns[adjPeer].peerConnection.Close()
+				delete(adjacentsMap.peerConns, adjPeer)
+			}
+		} else {
+			// Se il peer risponde, allora azzero il numero di ping mancati
+			adjPeerConnection, _ := adjacentsMap.peerConns[adjPeer]
+			adjPeerConnection.missedPing = 0
 		}
 	}
 }
@@ -40,14 +48,7 @@ func heartbeatToRegistry() {
 }
 
 func heartbeatFunction() {
-	adjacentsMap.connsMutex.Lock()
-	defer adjacentsMap.connsMutex.Unlock()
-
-	heartbeatMessage := HeartbeatMessage{EdgePeer: SelfPeer, NeighboursList: map[EdgePeer]byte{}}
-	for adjPeer := range adjacentsMap.peerConns {
-		heartbeatMessage.NeighboursList[adjPeer] = 0
-	}
-	returnMap := map[EdgePeer]byte{}
+	heartbeatMessage := HeartbeatMessage{EdgePeer: SelfPeer}
 	if registryClient == nil {
 		newRegistryConnection, err := ConnectToNode("registry:1234")
 		if err != nil {
@@ -56,7 +57,7 @@ func heartbeatFunction() {
 		}
 		registryClient = newRegistryConnection
 	}
-	err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, &returnMap)
+	err := registryClient.Call("RegistryService.Heartbeat", heartbeatMessage, new(int))
 	if err != nil {
 		utils.PrintEvent("HEARTBEAT_ERROR", "Invio di heartbeat al Registry fallito")
 		log.Println(err.Error())
@@ -64,36 +65,34 @@ func heartbeatFunction() {
 		registryClient = nil
 	}
 
-	coerenceWithRegistry(returnMap)
-
 }
 
-func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
-	// Aggiornare la lista dei peer in base a peer mancanti o meno:
-	// - Ci sono tutti --> Perfetto
+// func coerenceWithRegistry(registryAdjPeerList map[EdgePeer]byte) {
+// 	// Aggiornare la lista dei peer in base a peer mancanti o meno:
+// 	// - Ci sono tutti --> Perfetto
 
-	for registryAdjPeer := range registryAdjPeerList {
-		// - Manca qualcuno --> Lo aggiungo tra le connessioni
-		_, isInMap := registryAdjPeerList[registryAdjPeer]
-		if !isInMap {
-			client, err := ConnectToNode(registryAdjPeer.PeerAddr)
-			if err != nil {
-				utils.PrintEvent("CONNECTION_ERROR", "Errore connessione a registry "+registryAdjPeer.PeerAddr)
-			} else {
-				adjacentsMap.peerConns[registryAdjPeer] = client
-			}
-		}
-	}
+// 	for registryAdjPeer := range registryAdjPeerList {
+// 		// - Manca qualcuno --> Lo aggiungo tra le connessioni
+// 		_, isInMap := registryAdjPeerList[registryAdjPeer]
+// 		if !isInMap {
+// 			client, err := ConnectToNode(registryAdjPeer.PeerAddr)
+// 			if err != nil {
+// 				utils.PrintEvent("CONNECTION_ERROR", "Errore connessione a registry "+registryAdjPeer.PeerAddr)
+// 			} else {
+// 				adjacentsMap.peerConns[registryAdjPeer] = client
+// 			}
+// 		}
+// 	}
 
-	for adjacentNode := range adjacentsMap.peerConns {
-		// - Qualcuno in più --> Lo rimuovo dalle connessioni
-		_, isInMap := registryAdjPeerList[adjacentNode]
-		if !isInMap {
-			adjacentsMap.peerConns[adjacentNode].Close()
-			delete(adjacentsMap.peerConns, adjacentNode)
-		}
-	}
-}
+// 	for adjacentNode := range adjacentsMap.peerConns {
+// 		// - Qualcuno in più --> Lo rimuovo dalle connessioni
+// 		_, isInMap := registryAdjPeerList[adjacentNode]
+// 		if !isInMap {
+// 			adjacentsMap.peerConns[adjacentNode].Close()
+// 			delete(adjacentsMap.peerConns, adjacentNode)
+// 		}
+// 	}
+// }
 
 func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	client, err := ConnectToNode(peer.PeerAddr)
@@ -107,7 +106,7 @@ func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
 	//Connessione con il vicino creata correttamente, quindi la aggiungiamo al nostro insieme di connessioni
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
-	adjacentsMap.peerConns[peer] = client
+	adjacentsMap.peerConns[peer] = AdjConnection{client, 0}
 	utils.PrintEvent("CONNECTION_SUCCESS", "Connessione con "+peer.PeerAddr+" effettuata con successo")
 	return client, nil
 }

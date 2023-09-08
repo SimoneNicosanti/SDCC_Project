@@ -10,9 +10,14 @@ import (
 	bloom "github.com/tylertreat/BoomFilters"
 )
 
+type AdjConnection struct {
+	peerConnection *rpc.Client
+	missedPing     int
+}
+
 type AdjacentPeers struct {
 	connsMutex   sync.RWMutex
-	peerConns    map[EdgePeer](*rpc.Client)
+	peerConns    map[EdgePeer](AdjConnection)
 	filtersMutex sync.RWMutex
 	filterMap    map[EdgePeer](*bloom.StableBloomFilter)
 }
@@ -43,7 +48,7 @@ type FileRequestCache struct {
 
 var adjacentsMap = AdjacentPeers{
 	sync.RWMutex{},
-	map[EdgePeer]*rpc.Client{},
+	map[EdgePeer]AdjConnection{},
 	sync.RWMutex{},
 	map[EdgePeer]*bloom.StableBloomFilter{},
 }

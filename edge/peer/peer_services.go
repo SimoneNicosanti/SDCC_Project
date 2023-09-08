@@ -2,6 +2,7 @@ package peer
 
 import (
 	"edge/cache"
+	"edge/peer"
 	"edge/proto/client"
 	"edge/utils"
 	"fmt"
@@ -30,10 +31,15 @@ type PeerFileServer struct {
 	IpAddr string
 }
 
-// TODO Togliere il ping?? Ha sempre ragione il registry: potrebbe funzionare anche con, ma la logica rimane abbastanza simile
 func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 	utils.PrintEvent("PING_RECEIVED", "Ping Ricevuto da "+edgePeer.PeerAddr)
 	*returnPtr = 0
+
+	_, isPresent := adjacentsMap.peerConns[edgePeer]
+	if !isPresent {
+		peer.ConnectToNode(edgePeer.PeerAddr)
+	}
+
 	return nil
 }
 
@@ -52,7 +58,7 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	}
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
 	*returnPtr = 0
-	utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
+	//utils.PrintEvent("BLOOM_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
 	return nil
 }
 
@@ -60,6 +66,17 @@ func (p *EdgePeer) AddNeighbour(peer EdgePeer, none *int) error {
 	_, err := connectAndAddNeighbour(peer)
 
 	return err
+}
+
+func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
+	adjacentsMap.connsMutex.RLock()
+	defer adjacentsMap.connsMutex.RUnlock()
+	returnAdjs := map[EdgePeer]byte{}
+	for adjacent := range adjacentsMap.peerConns {
+		returnAdjs[adjacent] = 0
+	}
+	*returnPtr = returnAdjs
+	return nil
 }
 
 func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *FileLookupResponse) error {
