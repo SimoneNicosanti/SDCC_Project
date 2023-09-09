@@ -33,10 +33,13 @@ func pingFunction() {
 			if adjConn.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
 				adjacentsMap.peerConns[adjPeer].peerConnection.Close()
 				delete(adjacentsMap.peerConns, adjPeer)
+				removeBloomFilter(adjPeer)
+				utils.PrintEvent("REMOVED_NEIGHBOUR", fmt.Sprintf("Rimosso vicino '%s' dopo %d missed pings", adjPeer.PeerAddr, adjConn.missedPing))
 			}
 		} else {
 			// Se il peer risponde, allora azzero il numero di ping mancati
-			removeBloomFilter(adjPeer)
+			adjConn.missedPing = 0
+			adjacentsMap.peerConns[adjPeer] = adjConn
 		}
 	}
 }

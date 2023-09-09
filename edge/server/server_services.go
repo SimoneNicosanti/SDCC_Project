@@ -81,21 +81,25 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	}
 	defer publishNewTicket(isValidRequest)
 
-	_, err := os.Stat(utils.GetEnvironmentVariable("FILES_PATH") + requestMessage.FileName)
-	if os.IsNotExist(err) {
+	if !cache.GetCache().IsFileInCache(requestMessage.FileName) {
 		fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
 		lookupReponse, err := peer.NeighboursFileLookup(fileRequest)
 
-		ownerEdge := lookupReponse.OwnerEdge
-		fileSize := lookupReponse.FileSize
+		var ownerEdge peer.PeerFileServer
+		var fileSize int64
+		var isFileCacheable bool
 
 		fileChannel := make(chan []byte, utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 		defer close(fileChannel)
-		isFileCacheable := cache.CheckFileSize(fileSize)
-		// TODO Modificare la risposta in modo che torni la size del file!!
-		if isFileCacheable {
-			// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
-			go cache.GetCache().InsertFileInCache(fileChannel, requestMessage.FileName, fileSize)
+		if err == nil {
+			ownerEdge = lookupReponse.OwnerEdge
+			fileSize = lookupReponse.FileSize
+			isFileCacheable = cache.CheckFileSize(fileSize)
+			// TODO Modificare la risposta in modo che torni la size del file!!
+			if isFileCacheable {
+				// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
+				go cache.GetCache().InsertFileInCache(fileChannel, requestMessage.FileName, fileSize)
+			}
 		}
 
 		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
@@ -115,11 +119,9 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 			// }
 			return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> S3 DISABILITATO")
 		}
-	} else if err == nil { // ce l'ha l'edge corrente --> Leggi file e invia chunk
+	} else { // ce l'ha l'edge corrente --> Leggi file e invia chunk
 		utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache", requestMessage.FileName))
 		return sendFromLocalFileStream(requestMessage, downloadStream)
-	} else { //Got an error
-		return err
 	}
 	utils.PrintEvent("DOWNLOAD_SUCCESS", fmt.Sprintf("Invio del file '%s' Completata", requestMessage.FileName))
 	return nil

@@ -43,6 +43,7 @@ func GetCache() *Cache {
 
 func (cache *Cache) IsFileInCache(file_name string) bool {
 	_, is := cache.cachingMap[file_name]
+	utils.PrintEvent("CACHING_MAP", fmt.Sprintln(cache.cachingMap))
 	return is
 }
 
@@ -96,13 +97,11 @@ func (cache *Cache) RemoveFileFromCache(file_name string) {
 		utils.PrintEvent("CACHE_REMOVE_ERR", fmt.Sprintf("Errore durante l'eliminazione del file: '%s'", err.Error()))
 		return
 	}
-	if cache.removeFileFromQueue(file_name) {
-
-	}
+	cache.removeFileFromQueue(file_name)
 }
 
 func (cache *Cache) ActivateCacheRecovery() {
-	utils.PrintEvent("CACHE_RECOVERY_STARTED", "Trovata inconsistenza nella cache. Procedura di ripristino iniziata.")
+	utils.PrintEvent("CACHE_RECOVERY_STARTED", "Trovata inconsistenza nella cache.\r\nProcedura di ripristino iniziata.")
 	files, err := ioutil.ReadDir(utils.GetEnvironmentVariable("FILES_PATH"))
 	if err != nil {
 		utils.PrintEvent("CACHE_RECOVERY_ERROR", "Impossibile leggere i file nella cartella.")
@@ -114,26 +113,23 @@ func (cache *Cache) ActivateCacheRecovery() {
 			cache.insertFileInQueue(file.Name(), file.Size())
 		}
 	}
-
-	utils.PrintEvent("CACHE_RECOVERY_OK", "La cache è stata ripristinata con successo.")
+	utils.PrintCustomMap(cache.cachingMap, "Nessun file in cache...", "File trovati nella cache", "CACHE_RECOVERY_OK")
 }
 
-func (cache *Cache) removeFileFromQueue(file_name string) bool {
+func (cache *Cache) removeFileFromQueue(file_name string) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	index, err := cache.getIndex(file_name)
 	if err != nil {
-
 		cache.ActivateCacheRecovery()
-		return false
+		return
 	}
 
 	// Eliminazione file dalla mappa
 	delete(cache.cachingMap, file_name)
 	// Eliminazione file dalla coda
 	cache.cachingQueue = append(cache.cachingQueue[:index], cache.cachingQueue[index+1:]...)
-	return true
 }
 
 func freeMemoryForInsert(file_size int64, cache *Cache) {
@@ -161,10 +157,14 @@ func retrieveFreeMemorySize() int64 {
 
 func CheckFileSize(file_size int64) bool {
 	max_size := utils.GetInt64EnvironmentVariable("MAX_CACHABLE_FILE_SIZE")
-	if file_size <= max_size {
+	if file_size > 0 && file_size <= max_size {
 		return true
 	} else {
-		utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File è troppo grande per essere caricato nella cache.\r\n(FILE_SIZE: %.2f MB > MAX: %.2f MB)", float64(file_size)/1048576.0, float64(max_size)/1048576.0))
+		if file_size <= 0 {
+			utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File potrebbe essere vuoto.\r\n(FILE_SIZE: %.2f MB)", float64(file_size)/1048576.0))
+		} else {
+			utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File è troppo grande per essere caricato nella cache.\r\n(FILE_SIZE: %.2f MB > MAX: %.2f MB)", float64(file_size)/1048576.0, float64(max_size)/1048576.0))
+		}
 		return false
 	}
 }

@@ -48,22 +48,11 @@ func ActAsPeer() {
 
 	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server: "+errorMessage, err)
 	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
-	adjacentString := ""
-	howManyAdj := len(*adj)
-	currentAdj := 0
-	if howManyAdj == 0 {
-		adjacentString = "Nessun vicino a cui connettersi..."
-	} else {
-		adjacentString = "Vicini restituiti dal server Registry:\r\n"
-		for adjacent := range *adj {
-			adjacentString += "[*] " + adjacent.PeerAddr
-			currentAdj++
-			if currentAdj < howManyAdj {
-				adjacentString += "\r\n"
-			}
-		}
+	stringAdjMap := make(map[string]byte)
+	for peer := range *adj {
+		stringAdjMap[peer.PeerAddr] = 0
 	}
-	utils.PrintEvent("NEIGHBOURS_RECEIVED", adjacentString)
+	utils.PrintCustomMap(stringAdjMap, "Nessun vicino a cui connettersi...", "Vicini restituiti dal server Registry", "NEIGHBOURS_RECEIVED")
 
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
 	go pingsToAdjacents()
@@ -203,6 +192,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	doneChannel := make(chan *rpc.Call, maxContactable)
+	defer close(doneChannel)
 	contactedNum := 0
 
 	// Contattiamo solo i vicini positivi ai filtri (tranne il mittente originario)
@@ -240,7 +230,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 		}
 	}
 
-	// Ritorniamo il canale anziché il primo che risponde: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
+	// Ritorniamo il canale anziché il primo che risponde?: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
 	for i := 0; i < contactedNum; i++ {
 		neighbourCall := <-doneChannel
 		err := neighbourCall.Error

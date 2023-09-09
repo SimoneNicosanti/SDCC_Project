@@ -31,7 +31,7 @@ type PeerFileServer struct {
 }
 
 func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
-	utils.PrintEvent("PING_RECEIVED", "Ping Ricevuto da "+edgePeer.PeerAddr)
+	//utils.PrintEvent("PING_RECEIVED", "Ping Ricevuto da "+edgePeer.PeerAddr)
 	*returnPtr = 0
 
 	_, isPresent := adjacentsMap.peerConns[edgePeer]
@@ -51,6 +51,7 @@ func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 }
 
 func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, returnPtr *int) error {
+	*returnPtr = 0
 	edgePeer := bloomFilterMessage.EdgePeer
 	edgeFilter := bloom.NewDefaultStableBloomFilter(
 		utils.GetUintEnvironmentVariable("FILTER_N"),
@@ -64,7 +65,6 @@ func (p *EdgePeer) NotifyBloomFilter(bloomFilterMessage BloomFilterMessage, retu
 	adjacentsMap.filtersMutex.Lock()
 	defer adjacentsMap.filtersMutex.Unlock()
 	adjacentsMap.filterMap[edgePeer] = edgeFilter
-	*returnPtr = 0
 	//utils.PrintEvent("FILTER_RECEIVED", "filtro di bloom ricevuto correttamente da "+edgePeer.PeerAddr)
 	return nil
 }
@@ -95,8 +95,12 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 	fileRequestMessage.TTL--
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
-			NeighboursFileLookup(fileRequestMessage)
-			return fmt.Errorf("[*LOOKUP_CONTINUE*] -> Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad ulteriori vicini", fileRequestMessage.FileName)
+			utils.PrintEvent("LOOKUP_CONTINUE", fmt.Sprintf("Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad ulteriori vicini", fileRequestMessage.FileName))
+			neighbourResponse, err := NeighboursFileLookup(fileRequestMessage)
+			if err != nil {
+				return err
+			}
+			*returnPtr = neighbourResponse
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
 			return fmt.Errorf("[*LOOKUP_END*] -> Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName)

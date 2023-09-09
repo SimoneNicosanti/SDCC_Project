@@ -40,7 +40,7 @@ func (u *UploadStream) Read(p []byte) (n int, err error) {
 		if err != nil {
 			errorHash := sha256.Sum256([]byte("[*ERROR*]"))
 			u.FileChannel <- errorHash[:]
-			return 0, fmt.Errorf("[*ERROR*] -> Message Receive From gRPC encountered some problems")
+			return 0, fmt.Errorf(fmt.Sprintf("[*ERROR*] -> Message Receive From gRPC encountered some problems\r\nError was: '%s'", err.Error()))
 		}
 
 		if u.WriteOnChannel {

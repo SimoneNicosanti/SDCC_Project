@@ -28,9 +28,13 @@ def main():
             elif os.name == 'nt':
                 os.system('cls')
         elif action in ["get", "put", "delete"]:
-            colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
-            file_name = input("").strip()
-
+            while True:
+                colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
+                file_name = input("").strip()
+                if not file_name:
+                    colored_print("Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
+                else:
+                    break
             try:
                 if action == "get":
                     perform_action(Method.GET, file_name)

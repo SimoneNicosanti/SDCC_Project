@@ -167,3 +167,22 @@ func PrintEvent(title string, content string) {
 	log.Printf("\033[1;30;47m[*" + title + "*]\033[0m")
 	fmt.Printf(content + "\r\n\r\n")
 }
+
+func PrintCustomMap(customMap map[string]byte, ifEmpty string, ifNotEmpty string, eventMessage string) {
+	listString := ""
+	howMany := len(customMap)
+	currentItemsNum := 0
+	if howMany == 0 {
+		listString = ifEmpty
+	} else {
+		listString = ifNotEmpty + ":\r\n"
+		for item := range customMap {
+			listString += "[*] " + item
+			currentItemsNum++
+			if currentItemsNum < howMany {
+				listString += "\r\n"
+			}
+		}
+	}
+	PrintEvent(eventMessage, listString)
+}
