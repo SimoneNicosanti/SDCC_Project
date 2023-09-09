@@ -1,7 +1,7 @@
 package s3_boundary
 
 import (
-	"crypto/sha256"
+	"edge/channels"
 	"edge/proto/client"
 	"edge/utils"
 	"fmt"
@@ -14,7 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-func SendToS3(fileName string, uploadStreamReader UploadStream) error {
+func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
+	uploadStreamReader := UploadStream{RedirectionChannel: redirectionChannel, ResidualChunk: make([]byte, 0)}
 
 	sess := getSession()
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
@@ -26,14 +27,8 @@ func SendToS3(fileName string, uploadStreamReader UploadStream) error {
 		Key:    aws.String(fileName),                                       //percorso file da caricare
 		Body:   &uploadStreamReader,
 	})
-	if err != nil {
-		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-		uploadStreamReader.FileChannel <- errorHash[:]
-		fmt.Println("Errore nell'upload:", err)
-		return err
-	}
-
-	return nil
+	redirectionChannel.ReturnChannel <- err
+	close(redirectionChannel.ReturnChannel)
 }
 
 func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter DownloadStream) error {

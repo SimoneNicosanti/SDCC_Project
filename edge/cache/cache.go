@@ -1,13 +1,12 @@
 package cache
 
 import (
-	"crypto/sha256"
+	"edge/channels"
 	"edge/utils"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -58,7 +57,7 @@ func (cache *Cache) GetFileSize(file_name string) int64 {
 	return -1
 }
 
-func (cache *Cache) InsertFileInCache(fileChannel chan []byte, file_name string, file_size int64) {
+func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, file_name string, file_size int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?) // implementare login e fare un servizio per-user)
 	// TODO Gestire il recupero dei file in cache
 	_, alreadyExists := cache.cachingMap[file_name]
@@ -70,7 +69,7 @@ func (cache *Cache) InsertFileInCache(fileChannel chan []byte, file_name string,
 	} else {
 		if CheckFileSize(file_size) {
 			freeMemoryForInsert(file_size, cache)
-			err := WriteChunksInCache(fileChannel, file_name)
+			err := writeChunksInCache(redirectionChannel, file_name)
 			if err != nil {
 				utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
 				return
@@ -198,57 +197,69 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 	return newFilter
 }
 
-func WriteChunksInCache(fileChannel chan []byte, fileName string) error {
+func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName string) error {
 
 	var localFile *os.File
 	var fileCreated bool = false
 	var errorOccurred bool = false
 	var err error = nil
+	var endLoop bool = false
 
-	errorHashString := fmt.Sprintf("%x", sha256.Sum256([]byte("[*ERROR*]")))
-	for chunk := range fileChannel {
-		if errorOccurred {
-			utils.PrintEvent("ERROR OCCURRED", "")
-			continue
-		}
-
-		if !fileCreated {
-			localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-			if err != nil {
-				// Impossibile creare il file -> consumiamo tutto sul canale e ritorniamo un errore
-				errorOccurred = true
-				utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
-			} else {
-				// Creazione del file
-				fileCreated = true
-				err = syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
-				if err != nil {
-					errorOccurred = true
-					utils.PrintEvent("FILE_LOCK_ERR", fmt.Sprintf("Errore nel tentativo di prendere Lock sul file '%s' ", fileName))
-				} else {
-					defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
-				}
-				defer localFile.Close()
+	for !endLoop {
+		select {
+		// Lettura dal canale di chunks
+		case chunk, closed := <-redirectionChannel.ChunkChannel:
+			if closed {
+				endLoop = true
+				break
 			}
-		}
-
-		chunkString := fmt.Sprintf("%x", chunk)
-		if strings.Compare(chunkString, errorHashString) == 0 {
-			errorOccurred = true
-			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Sequenza di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.", fileName))
-		} else {
+			if errorOccurred {
+				utils.PrintEvent("CACHE_IGNORE", "An error occurred")
+				break
+			}
+			// TODO Capire se si può portare fuori
+			if !fileCreated {
+				localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+				if err != nil {
+					// Impossibile creare il file -> consumiamo tutto sul canale e ritorniamo un errore
+					errorOccurred = true
+					utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
+					redirectionChannel.ReturnChannel <- err
+				} else {
+					// Creazione del file
+					fileCreated = true
+					err = syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
+					if err != nil {
+						errorOccurred = true
+						utils.PrintEvent("FILE_LOCK_ERR", fmt.Sprintf("Errore nel tentativo di prendere Lock sul file '%s' ", fileName))
+						redirectionChannel.ReturnChannel <- err
+					} else {
+						defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
+					}
+					defer localFile.Close()
+				}
+			}
+			// Scrittura file locale
 			_, err = localFile.Write(chunk)
 			if err != nil {
 				errorOccurred = true
 				os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-				utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile scrivere il file '%s' nella cache.", fileName))
+				utils.PrintEvent("CACHE_FAILURE", fmt.Sprintf("Impossibile scrivere il file '%s' nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
+				redirectionChannel.ReturnChannel <- err
+			}
+
+		// Si è verificato un errore nello scrivente
+		case err := <-redirectionChannel.ErrorChannel:
+			if err != nil {
+				os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+				utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
+				redirectionChannel.ReturnChannel <- err
 			}
 		}
 	}
-
 	if fileCreated && !errorOccurred {
 		utils.PrintEvent("CACHE_SUCCESS", fmt.Sprintf("File '%s' caricato localmente con successo", fileName))
+		redirectionChannel.ReturnChannel <- nil
 		return nil
 	}
 	return err

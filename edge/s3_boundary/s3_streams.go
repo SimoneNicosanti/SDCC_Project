@@ -2,7 +2,9 @@ package s3_boundary
 
 import (
 	"crypto/sha256"
+	"edge/channels"
 	"edge/proto/client"
+	"edge/utils"
 	"fmt"
 	"io"
 )
@@ -16,55 +18,50 @@ type DownloadStream struct {
 }
 
 type UploadStream struct {
-	ClientStream   client.FileService_UploadServer
-	FileName       string
-	ResidualChunk  []byte
-	FileChannel    chan []byte
-	WriteOnChannel bool
+	ResidualChunk      []byte
+	RedirectionChannel channels.RedirectionChannel
 }
 
-func (u *UploadStream) Read(p []byte) (n int, err error) {
+func (u *UploadStream) Read(dest []byte) (bytesInDest int, err error) {
 
 	var fileChunk []byte
 
 	if len(u.ResidualChunk) > 0 {
 		// Parte del chunk precedente deve essere consumata
-		//utils.PrintEvent("UPLOAD_RCV", "Letto da Residuo")
+		utils.PrintEvent("UPLOAD_RCV", "Letto da Residuo")
 		fileChunk = u.ResidualChunk
 	} else {
-		//utils.PrintEvent("UPLOAD_RCV", "Letto da Canale")
-		chunkMessage, err := u.ClientStream.Recv()
-		if err == io.EOF {
-			return 0, io.EOF
+		select {
+		case chunk := <-u.RedirectionChannel.ChunkChannel:
+			utils.PrintEvent("UPLOAD_RCV", "Letto da Chunk")
+			if len(chunk) == 0 {
+				// Potrebbe essere stato chiuso a causa di un errore
+				utils.PrintEvent("UPLOAD_CLOSE", "Canale Chiuso")
+				err := <-u.RedirectionChannel.ErrorChannel
+				if err != nil {
+					return 0, err
+				}
+				return 0, io.EOF
+			}
+			fileChunk = chunk
+		case err := <-u.RedirectionChannel.ErrorChannel:
+			utils.PrintEvent("UPLOAD_ERR", "Ricevuto Errore")
+			return 0, err
 		}
-		if err != nil {
-			errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-			u.FileChannel <- errorHash[:]
-			return 0, fmt.Errorf(fmt.Sprintf("[*ERROR*] -> Message Receive From gRPC encountered some problems\r\nError was: '%s'", err.Error()))
-		}
-
-		if u.WriteOnChannel {
-			// Send chunk to local Write
-			chunkCopy := make([]byte, len(chunkMessage.Chunk))
-			copy(chunkCopy, chunkMessage.Chunk)
-			u.FileChannel <- chunkCopy
-		}
-
-		fileChunk = chunkMessage.Chunk
 	}
 
-	pLen := len(p)
+	destLen := len(dest)
 	chunkLen := len(fileChunk)
-	if pLen > chunkLen {
-		copy(p, fileChunk)
-		p = p[0:chunkLen]
+	if destLen > chunkLen {
+		copy(dest, fileChunk)
+		dest = dest[0:chunkLen]
 		u.ResidualChunk = u.ResidualChunk[0:0]
 	} else {
-		copy(p, fileChunk[0:pLen])
-		u.ResidualChunk = fileChunk[pLen:]
+		copy(dest, fileChunk[0:destLen])
+		u.ResidualChunk = fileChunk[destLen:]
 	}
 
-	return len(p), nil
+	return len(dest), nil
 }
 
 func (d *DownloadStream) WriteAt(p []byte, off int64) (n int, err error) {
