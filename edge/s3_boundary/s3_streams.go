@@ -32,7 +32,7 @@ func (u *UploadStream) Read(dest []byte) (bytesInDest int, err error) {
 		fileChunk = u.ResidualChunk
 	} else {
 		select {
-		case chunk := <-u.RedirectionChannel.ChunkChannel:
+		case chunk, _ := <-u.RedirectionChannel.ChunkChannel:
 			utils.PrintEvent("UPLOAD_RCV", "Letto da Chunk")
 			if len(chunk) == 0 {
 				// Potrebbe essere stato chiuso a causa di un errore
@@ -45,8 +45,10 @@ func (u *UploadStream) Read(dest []byte) (bytesInDest int, err error) {
 			}
 			fileChunk = chunk
 		case err := <-u.RedirectionChannel.ErrorChannel:
-			utils.PrintEvent("UPLOAD_ERR", "Ricevuto Errore")
-			return 0, err
+			if err != nil {
+				utils.PrintEvent("UPLOAD_ERR", "Ricevuto Errore")
+				return 0, err
+			}
 		}
 	}
 

@@ -60,6 +60,7 @@ func (cache *Cache) GetFileSize(file_name string) int64 {
 func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, file_name string, file_size int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?) // implementare login e fare un servizio per-user)
 	// TODO Gestire il recupero dei file in cache
+
 	_, alreadyExists := cache.cachingMap[file_name]
 	if alreadyExists {
 		// Se esiste già, reinserisci il file in testa alla coda
@@ -137,6 +138,10 @@ func freeMemoryForInsert(file_size int64, cache *Cache) {
 	// piuttosto che eliminare gli ultimi e basta
 	for {
 		if retrieveFreeMemorySize() < file_size {
+			// lenght := len(cache.cachingQueue)
+			// if lenght == 0 {
+			// 	cache.RemoveFileFromCache(cache.cachingQueue[0].file_name)
+			// }
 			cache.RemoveFileFromCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
 		} else {
 			break
@@ -198,7 +203,7 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 }
 
 func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName string) error {
-
+	utils.PrintEvent("CACHE_WRITE_INIT", "")
 	var localFile *os.File
 	var fileCreated bool = false
 	var errorOccurred bool = false
@@ -208,8 +213,8 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 	for !endLoop {
 		select {
 		// Lettura dal canale di chunks
-		case chunk, closed := <-redirectionChannel.ChunkChannel:
-			if closed {
+		case chunk := <-redirectionChannel.ChunkChannel:
+			if len(chunk) == 0 {
 				endLoop = true
 				break
 			}
