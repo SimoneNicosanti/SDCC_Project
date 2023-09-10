@@ -2,7 +2,6 @@ package s3_boundary
 
 import (
 	"edge/channels"
-	"edge/proto/client"
 	"edge/utils"
 	"fmt"
 	"log"
@@ -31,20 +30,11 @@ func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
 	close(redirectionChannel.ReturnChannel)
 }
 
-func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter DownloadStream) error {
+func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionChannel, cacheRedirectionChannel channels.RedirectionChannel, isFileCachable bool) error {
+	downloadStreamWriter := DownloadStream{ClientChannel: clientRedirectionChannel, CacheChannel: cacheRedirectionChannel, IsFileCacheable: isFileCachable}
 	// 1] Open connection to S3
 	// 2] retrieve chunk by chunk (send to client + save in local)
 	sess := getSession()
-	fileSize, err := getFileSize(sess, requestMessage.FileName)
-	if err != nil {
-		return err
-	}
-
-	if fileSize > int64(utils.GetIntEnvironmentVariable("CACHE_FILE_MAX_SIZE")) {
-		//TODO Rispondi solo al file ma non metti in Cache
-	} else {
-		//TODO Metti in cache
-	}
 	// Crea un downloader con la dimensione delle parti configurata
 	downloader := s3manager.NewDownloader(
 		sess,
@@ -56,15 +46,19 @@ func SendFromS3(requestMessage *client.FileDownloadRequest, downloadStreamWriter
 	log.Println(downloader.PartSize, downloader.Concurrency)
 
 	// Esegui il download e scrivi i dati nello stream gRPC
-	_, err = downloader.Download(
+	_, err := downloader.Download(
 		&downloadStreamWriter,
 		&s3.GetObjectInput{
 			Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
-			Key:    aws.String(requestMessage.FileName),                        //percorso file da scaricare
+			Key:    aws.String(fileName),                                       //percorso file da scaricare
 		},
 	)
 	if err != nil {
-		fmt.Println("Errore nel download:", err)
+		utils.PrintEvent("S3_ERROR", fmt.Sprintf("Errore nella downalod del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error()))
+		clientRedirectionChannel.ErrorChannel <- err
+		if isFileCachable {
+			cacheRedirectionChannel.ErrorChannel <- err
+		}
 		return err
 	}
 
@@ -79,7 +73,8 @@ func getSession() *session.Session {
 	return sess
 }
 
-func getFileSize(sess *session.Session, fileName string) (int64, error) {
+func GetFileSize(fileName string) (int64, error) {
+	sess := getSession()
 	svc := s3.New(sess)
 	headObjOutput, err := svc.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")),

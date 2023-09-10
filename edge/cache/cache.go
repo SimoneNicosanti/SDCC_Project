@@ -68,7 +68,7 @@ func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionCha
 		cache.insertFileInQueue(file_name, file_size)
 		return
 	} else {
-		if CheckFileSize(file_size) {
+		if IsFileCacheable(file_size) {
 			freeMemoryForInsert(file_size, cache)
 			err := writeChunksInCache(redirectionChannel, file_name)
 			if err != nil {
@@ -159,7 +159,7 @@ func retrieveFreeMemorySize() int64 {
 	return int64(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
-func CheckFileSize(file_size int64) bool {
+func IsFileCacheable(file_size int64) bool {
 	max_size := utils.GetInt64EnvironmentVariable("MAX_CACHABLE_FILE_SIZE")
 	if file_size > 0 && file_size <= max_size {
 		return true
@@ -203,7 +203,7 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 }
 
 func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName string) error {
-	utils.PrintEvent("CACHE_WRITE_INIT", "")
+	utils.PrintEvent("CACHE_WRITE_INIT", "La procedura di scrittura sulla cache è terminata.")
 	var localFile *os.File
 	var fileCreated bool = false
 	var errorOccurred bool = false
@@ -219,7 +219,6 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 				break
 			}
 			if errorOccurred {
-				utils.PrintEvent("CACHE_IGNORE", "An error occurred")
 				break
 			}
 			// TODO Capire se si può portare fuori

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/sha256"
 	"edge/cache"
 	"edge/channels"
 	"edge/peer"
@@ -10,6 +9,7 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strconv"
 	"syscall"
@@ -29,7 +29,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	if shouldReturn {
 		return returnValue
 	}
-	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", "Ricevuta richiesta di upload per file '"+fileName+"'.")
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di upload per file '%s'\r\nTicket: '%s'", fileName, ticketID))
 
 	isValidRequest := checkTicket(ticketID)
 	if isValidRequest == -1 {
@@ -44,7 +44,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	// TODO Defer chiusura canali
 
 	// Ridirezione del flusso sulla cache
-	isFileCacheable := cache.CheckFileSize(fileSize)
+	isFileCacheable := cache.IsFileCacheable(fileSize)
 	if isFileCacheable {
 		// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
 		go cache.GetCache().InsertFileInCache(cacheRedirectionChannel, fileName, fileSize)
@@ -53,15 +53,15 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	// Ridirezione su S3
 	go s3_boundary.SendToS3(fileName, s3RedirectionChannel)
 
-	grpcError := rcvAndRedirectChunks(s3RedirectionChannel, cacheRedirectionChannel, isFileCacheable, uploadStream)
+	err := rcvAndRedirectChunks(s3RedirectionChannel, cacheRedirectionChannel, isFileCacheable, uploadStream)
 
-	if grpcError != nil {
+	if err != nil {
 		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nTICKET: '%s'", fileName, ticketID))
-		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", grpcError.Error()))
+		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
 	}
 	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nTICKET: '%s'", fileName, ticketID))
 	response := client.Response{TicketId: ticketID, Success: true}
-	err := uploadStream.SendAndClose(&response)
+	err = uploadStream.SendAndClose(&response)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close clientstream.\r\nError: '%s'", err.Error()))
 	}
@@ -85,107 +85,125 @@ func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, str
 
 // TODO impostare un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
-	// utils.PrintEvent("CLIENT_REQUEST_RECEIVED", "Ricevuta richiesta di download per file '"+requestMessage.FileName+"'.")
-	// isValidRequest := checkTicket(requestMessage.TicketId)
-	// if isValidRequest == -1 {
-	// 	return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
-	// }
-	// defer publishNewTicket(isValidRequest)
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.TicketId))
+	isValidRequest := checkTicket(requestMessage.TicketId)
+	if isValidRequest == -1 {
+		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
+	}
+	defer publishNewTicket(isValidRequest)
 
-	// if !cache.GetCache().IsFileInCache(requestMessage.FileName) {
-	// 	fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
-	// 	lookupReponse, err := peer.NeighboursFileLookup(fileRequest)
-
-	// 	var ownerEdge peer.PeerFileServer
-	// 	var fileSize int64
-	// 	var isFileCacheable bool
-
-	// 	fileChannel := make(chan []byte, utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
-	// 	defer close(fileChannel)
-	// 	if err == nil {
-	// 		ownerEdge = lookupReponse.OwnerEdge
-	// 		fileSize = lookupReponse.FileSize
-	// 		isFileCacheable = cache.CheckFileSize(fileSize)
-	// 		// TODO Modificare la risposta in modo che torni la size del file!!
-	// 		if isFileCacheable {
-	// 			// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
-	// 			go cache.GetCache().InsertFileInCache(fileChannel, requestMessage.FileName, fileSize)
-	// 		}
-	// 	}
-
-	// 	if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
-	// 		utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", requestMessage.FileName, ownerEdge.IpAddr))
-	// 		err := sendFromOtherEdge(ownerEdge, requestMessage, downloadStream, fileChannel, isFileCacheable)
-	// 		if err != nil {
-	// 			utils.PrintEvent("SEND_FROM_EDGE_ERROR", err.Error())
-	// 		}
-	// 	} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
-	// 		// log.Printf("[*S3*] -> looking for file '%s' in s3...", requestMessage.FileName)
-	// 		// s3DownloadStream := s3_boundary.DownloadStream{ClientStream: downloadStream, FileName: requestMessage.FileName, TicketID: requestMessage.TicketId, FileChannel: fileChannel, WriteOnChannel: isFileCacheable}
-	// 		// err = s3_boundary.SendFromS3(requestMessage, s3DownloadStream)
-	// 		// if err != nil {
-	// 		// 	errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-	// 		// 	fileChannel <- errorHash[:]
-	// 		// 	return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Couldn't locate requested file in specified bucket.\r\nError: '%s'", err.Error()))
-	// 		// }
-	// 		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*ERROR*] -> S3 DISABILITATO")
-	// 	}
-	// } else { // ce l'ha l'edge corrente --> Leggi file e invia chunk
-	// 	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache", requestMessage.FileName))
-	// 	return sendFromLocalFileStream(requestMessage, downloadStream)
-	// }
-	// utils.PrintEvent("DOWNLOAD_SUCCESS", fmt.Sprintf("Invio del file '%s' Completata", requestMessage.FileName))
+	if !cache.GetCache().IsFileInCache(requestMessage.FileName) {
+		// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
+		lookupReponse, err := lookupFileInNetwork(requestMessage)
+		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
+			sendFromOtherEdge(lookupReponse, requestMessage.FileName, downloadStream)
+		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
+			redirectFromS3(requestMessage.FileName, downloadStream)
+			//TODO return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Couldn't locate requested file in specified bucket.\r\nError: '%s'", err.Error()))
+		}
+	} else { // ce l'ha l'edge corrente --> Leggi file e invia chunk
+		return sendFromLocalCache(requestMessage.FileName, downloadStream)
+	}
+	utils.PrintEvent("DOWNLOAD_SUCCESS", fmt.Sprintf("Invio del file '%s' Completata", requestMessage.FileName))
 	return nil
 }
 
-func sendFromOtherEdge(ownerEdge peer.PeerFileServer, requestMessage *client.FileDownloadRequest, clientDownloadStream client.FileService_DownloadServer, fileChannel chan []byte, writeOnChannel bool) error {
+func redirectFromS3(fileName string, downloadStream client.FileService_DownloadServer) {
+	log.Printf("[*S3*] -> looking for file '%s' in s3...", fileName)
+	var isFileCachable bool = false
+	fileSize, err := s3_boundary.GetFileSize(fileName)
+	if err != nil {
+		utils.PrintEvent("S3_ERROR", fmt.Sprint("Impossibile ricavare dimensione del file '%s' da S3", fileName))
+	} else {
+		isFileCachable = cache.IsFileCacheable(fileSize)
+	}
+
+	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+
+	if isFileCachable {
+		go cache.GetCache().InsertFileInCache(cacheRedirectionChannel, fileName, fileSize)
+	}
+
+	go s3_boundary.SendFromS3(fileName, clientRedirectionChannel, cacheRedirectionChannel, isFileCachable)
+
+	redirectStreamToClient(cacheRedirectionChannel, downloadStream)
+
+}
+
+func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileLookupResponse, error) {
+	fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
+	lookupReponse, err := peer.NeighboursFileLookup(fileRequest)
+
+	if err != nil {
+		return peer.FileLookupResponse{}, err
+	}
+	return lookupReponse, nil
+}
+
+func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, clientDownloadStream client.FileService_DownloadServer) {
+	utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", fileName, lookupResponse.OwnerEdge.IpAddr))
 	// 1] Open gRPC connection to ownerEdge
 	// 2] retrieve chunk by chunk (send to client + save in local)
+	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+
+	isFileCachable := cache.IsFileCacheable(lookupResponse.FileSize)
+	if isFileCachable {
+		go cache.GetCache().InsertFileInCache(cacheRedirectionChannel, fileName, lookupResponse.FileSize)
+	}
+	// Imposta la nuova dimensione massima
+	go downloadFromOtherEdge(lookupResponse, fileName, cacheRedirectionChannel, clientRedirectionChannel, isFileCachable)
+
+	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
+	return
+}
+
+func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, cacheRedirectionChannel channels.RedirectionChannel, clientRedirectionChannel channels.RedirectionChannel, isFileCacheable bool) {
 	opts := []grpc.DialOption{
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE"))), // Imposta la nuova dimensione massima
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE"))),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
+	ownerEdge := lookupResponse.OwnerEdge
 	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
-		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-		fileChannel <- errorHash[:]
-		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		if isFileCacheable {
+			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		}
+		return
 	}
 	grpcClient := client.NewEdgeFileServiceClient(conn)
 	context := context.Background()
-	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{TicketId: "", FileName: requestMessage.FileName})
+	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{TicketId: "", FileName: fileName})
 	if err != nil {
-		errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-		fileChannel <- errorHash[:]
-		return status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		if isFileCacheable {
+			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		}
+		return
 	}
 
-	for {
-		edgeChunk, err := edgeDownloadStream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			errorHash := sha256.Sum256([]byte("[*ERROR*]"))
-			fileChannel <- errorHash[:]
-			return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Failed while receiving chunks from other edge via gRPC.\r\nError: '%s'", err.Error()))
-		}
-		clientDownloadStream.Send(&client.FileChunk{Chunk: edgeChunk.Chunk})
-
-		if writeOnChannel {
-			chunkCopy := make([]byte, len(edgeChunk.Chunk))
-			copy(chunkCopy, edgeChunk.Chunk)
-			fileChannel <- chunkCopy
+	rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
+	err = edgeDownloadStream.CloseSend()
+	if err != nil {
+		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
+		if isFileCacheable {
+			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
 		}
 	}
+}
 
-	edgeDownloadStream.CloseSend()
-
+func sendFromLocalCache(fileName string, clientDownloadStream client.FileService_DownloadServer) error {
+	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	go readFromLocalCache(fileName, clientRedirectionChannel)
+	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
 	return nil
 }
 
-func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
-	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + requestMessage.FileName)
+func readFromLocalCache(fileName string, clientRedirectionChannel channels.RedirectionChannel) error {
+	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
 	}
@@ -195,15 +213,18 @@ func sendFromLocalFileStream(requestMessage *client.FileDownloadRequest, downloa
 
 	chunkSize := utils.GetIntEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
+
+	defer close(clientRedirectionChannel.ChunkChannel)
+	defer close(clientRedirectionChannel.ErrorChannel)
 	for {
-		n, err := localFile.Read(buffer)
+		bytesRead, err := localFile.Read(buffer)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))
+			clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))
 		}
-		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
+		clientRedirectionChannel.ChunkChannel <- buffer[:bytesRead]
 	}
 	return nil
 }
