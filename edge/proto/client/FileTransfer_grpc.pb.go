@@ -28,7 +28,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FileServiceClient interface {
 	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileService_DownloadClient, error)
-	// rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
 	Upload(ctx context.Context, opts ...grpc.CallOption) (FileService_UploadClient, error)
 }
 
@@ -111,7 +110,6 @@ func (x *fileServiceUploadClient) CloseAndRecv() (*Response, error) {
 // for forward compatibility
 type FileServiceServer interface {
 	Download(*FileDownloadRequest, FileService_DownloadServer) error
-	// rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
 	Upload(FileService_UploadServer) error
 	mustEmbedUnimplementedFileServiceServer()
 }

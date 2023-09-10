@@ -3,7 +3,6 @@ package server
 import (
 	"edge/channels"
 	"edge/proto/client"
-	"edge/utils"
 	"fmt"
 	"io"
 
@@ -25,6 +24,9 @@ func rcvAndRedirectChunks(mainRedirectionChannel channels.RedirectionChannel, ca
 		case err := <-mainRedirectionChannel.ReturnChannel:
 			mainChannelError = err
 			if mainChannelError != nil {
+				// Se c'è un errore sul canale di ridirezione principale (S3 oppure Client) il file non viene salvato in Cache
+				// La copia creata viene quindi rimossa
+				cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: err}
 				endLoop = true
 			}
 		case err := <-cacheRedirectionChannel.ReturnChannel:
@@ -38,9 +40,10 @@ func rcvAndRedirectChunks(mainRedirectionChannel channels.RedirectionChannel, ca
 				break
 			}
 			if err != nil {
-				mainRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
+				customErr := status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
+				mainRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 				if isFileCacheable {
-					cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
+					cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 				}
 				endLoop = true
 				grpcError = err
@@ -49,20 +52,17 @@ func rcvAndRedirectChunks(mainRedirectionChannel channels.RedirectionChannel, ca
 
 			s3Chunk := make([]byte, len(grpcMsg.Chunk))
 			copy(s3Chunk, grpcMsg.Chunk)
-			mainRedirectionChannel.ChunkChannel <- s3Chunk
+			mainRedirectionChannel.MessageChannel <- channels.Message{Body: s3Chunk, Err: nil}
 
 			if isFileCacheable {
 				cacheChunk := make([]byte, len(grpcMsg.Chunk))
 				copy(cacheChunk, grpcMsg.Chunk)
-				cacheRedirectionChannel.ChunkChannel <- cacheChunk
+				cacheRedirectionChannel.MessageChannel <- channels.Message{Body: cacheChunk, Err: nil}
 			}
 		}
 	}
-	close(mainRedirectionChannel.ChunkChannel)
-	close(mainRedirectionChannel.ErrorChannel)
-	close(cacheRedirectionChannel.ChunkChannel)
-	close(cacheRedirectionChannel.ErrorChannel)
-
+	close(mainRedirectionChannel.MessageChannel)
+	close(cacheRedirectionChannel.MessageChannel)
 	err := <-mainRedirectionChannel.ReturnChannel
 
 	if err != nil {
@@ -77,28 +77,18 @@ func rcvAndRedirectChunks(mainRedirectionChannel channels.RedirectionChannel, ca
 	}
 }
 
-func redirectStreamToClient(clientRedirectionChannel channels.RedirectionChannel, clientDownloadStream client.FileService_DownloadServer) {
+func redirectStreamToClient(clientRedirectionChannel channels.RedirectionChannel, clientDownloadStream client.FileService_DownloadServer) error {
 	defer close(clientRedirectionChannel.ReturnChannel)
-	var endLoop bool = false
-	for !endLoop {
-		select {
-		case chunk, _ := <-clientRedirectionChannel.ChunkChannel:
-			if len(chunk) == 0 {
-				endLoop = true
-				break
-			}
-			err := clientDownloadStream.Send(&client.FileChunk{Chunk: chunk})
-			if err != nil {
-				clientRedirectionChannel.ReturnChannel <- err
-				endLoop = true
-			}
-		case err := <-clientRedirectionChannel.ErrorChannel:
-			if err != nil {
-				utils.PrintEvent("REDIRECTION_ERROR", err.Error())
-				endLoop = true
-				break
-			}
+
+	for message := range clientRedirectionChannel.MessageChannel {
+		if message.Err != nil {
+			return message.Err
+		}
+		err := clientDownloadStream.Send(&client.FileChunk{Chunk: message.Body})
+		if err != nil {
+			clientRedirectionChannel.ReturnChannel <- err
+			return err
 		}
 	}
-	return
+	return nil
 }

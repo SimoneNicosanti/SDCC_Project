@@ -4,7 +4,6 @@ import (
 	"edge/channels"
 	"edge/utils"
 	"fmt"
-	"log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -15,6 +14,7 @@ import (
 
 func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
 	uploadStreamReader := UploadStream{RedirectionChannel: redirectionChannel, ResidualChunk: make([]byte, 0)}
+	defer close(redirectionChannel.ReturnChannel)
 
 	sess := getSession()
 	uploader := s3manager.NewUploader(sess, func(d *s3manager.Uploader) {
@@ -27,13 +27,16 @@ func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
 		Body:   &uploadStreamReader,
 	})
 	redirectionChannel.ReturnChannel <- err
-	close(redirectionChannel.ReturnChannel)
+
 }
 
 func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionChannel, cacheRedirectionChannel channels.RedirectionChannel, isFileCachable bool) error {
-	downloadStreamWriter := DownloadStream{ClientChannel: clientRedirectionChannel, CacheChannel: cacheRedirectionChannel, IsFileCacheable: isFileCachable}
 	// 1] Open connection to S3
 	// 2] retrieve chunk by chunk (send to client + save in local)
+	downloadStreamWriter := DownloadStream{ClientChannel: clientRedirectionChannel, CacheChannel: cacheRedirectionChannel, IsFileCacheable: isFileCachable}
+	defer close(cacheRedirectionChannel.MessageChannel)
+	defer close(clientRedirectionChannel.MessageChannel)
+
 	sess := getSession()
 	// Crea un downloader con la dimensione delle parti configurata
 	downloader := s3manager.NewDownloader(
@@ -43,7 +46,6 @@ func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionCh
 			d.Concurrency = 1                                     //TODO Vedere se implementarlo in modo parallelo --> Serve numero d'ordine nel FileChunk
 		},
 	)
-	log.Println(downloader.PartSize, downloader.Concurrency)
 
 	// Esegui il download e scrivi i dati nello stream gRPC
 	_, err := downloader.Download(
@@ -54,10 +56,10 @@ func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionCh
 		},
 	)
 	if err != nil {
-		utils.PrintEvent("S3_ERROR", fmt.Sprintf("Errore nella downalod del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error()))
-		clientRedirectionChannel.ErrorChannel <- err
+		utils.PrintEvent("S3_ERROR", fmt.Sprintf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error()))
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: err}
 		if isFileCachable {
-			cacheRedirectionChannel.ErrorChannel <- err
+			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: err}
 		}
 		return err
 	}

@@ -36,8 +36,7 @@ class FileServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Upload(self, request_iterator, context):
-        """rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
-        rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
+        """rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

@@ -5,7 +5,6 @@ option go_package = "../proto/client";
 
 service FileService {
     rpc Download(FileDownloadRequest) returns (stream FileChunk);
-    //rpc DownloadFromEdge(EdgeFileDownloadRequest) returns (stream EdgeFileChunk);
     rpc Upload(stream FileChunk) returns (Response);
     // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
 }

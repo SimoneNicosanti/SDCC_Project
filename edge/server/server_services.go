@@ -9,7 +9,6 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"syscall"
@@ -109,11 +108,11 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 }
 
 func redirectFromS3(fileName string, downloadStream client.FileService_DownloadServer) {
-	log.Printf("[*S3*] -> looking for file '%s' in s3...", fileName)
+	utils.PrintEvent("S3_LOOKUP", fmt.Sprintf("looking for file '%s' in s3...", fileName))
 	var isFileCachable bool = false
 	fileSize, err := s3_boundary.GetFileSize(fileName)
 	if err != nil {
-		utils.PrintEvent("S3_ERROR", fmt.Sprint("Impossibile ricavare dimensione del file '%s' da S3", fileName))
+		utils.PrintEvent("S3_ERROR", fmt.Sprintf("Impossibile ricavare dimensione del file '%s' da S3", fileName))
 	} else {
 		isFileCachable = cache.IsFileCacheable(fileSize)
 	}
@@ -127,8 +126,11 @@ func redirectFromS3(fileName string, downloadStream client.FileService_DownloadS
 
 	go s3_boundary.SendFromS3(fileName, clientRedirectionChannel, cacheRedirectionChannel, isFileCachable)
 
-	redirectStreamToClient(cacheRedirectionChannel, downloadStream)
+	err = redirectStreamToClient(clientRedirectionChannel, downloadStream)
 
+	if err != nil {
+		utils.PrintEvent("S3_ERROR", err.Error())
+	}
 }
 
 func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileLookupResponse, error) {
@@ -156,7 +158,6 @@ func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, 
 	go downloadFromOtherEdge(lookupResponse, fileName, cacheRedirectionChannel, clientRedirectionChannel, isFileCachable)
 
 	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
-	return
 }
 
 func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, cacheRedirectionChannel channels.RedirectionChannel, clientRedirectionChannel channels.RedirectionChannel, isFileCacheable bool) {
@@ -167,9 +168,10 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	ownerEdge := lookupResponse.OwnerEdge
 	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
-		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		}
 		return
 	}
@@ -177,9 +179,10 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	context := context.Background()
 	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{TicketId: "", FileName: fileName})
 	if err != nil {
-		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		}
 		return
 	}
@@ -187,9 +190,10 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
 	err = edgeDownloadStream.CloseSend()
 	if err != nil {
-		clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
+		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
+			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		}
 	}
 }
@@ -214,17 +218,16 @@ func readFromLocalCache(fileName string, clientRedirectionChannel channels.Redir
 	chunkSize := utils.GetIntEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
 
-	defer close(clientRedirectionChannel.ChunkChannel)
-	defer close(clientRedirectionChannel.ErrorChannel)
+	defer close(clientRedirectionChannel.MessageChannel)
 	for {
 		bytesRead, err := localFile.Read(buffer)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			clientRedirectionChannel.ErrorChannel <- status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))
+			clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
 		}
-		clientRedirectionChannel.ChunkChannel <- buffer[:bytesRead]
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: buffer[:bytesRead], Err: nil}
 	}
 	return nil
 }

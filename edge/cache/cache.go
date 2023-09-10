@@ -42,7 +42,6 @@ func GetCache() *Cache {
 
 func (cache *Cache) IsFileInCache(file_name string) bool {
 	_, is := cache.cachingMap[file_name]
-	utils.PrintEvent("CACHING_MAP", fmt.Sprintln(cache.cachingMap))
 	return is
 }
 
@@ -165,7 +164,7 @@ func IsFileCacheable(file_size int64) bool {
 		return true
 	} else {
 		if file_size <= 0 {
-			utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File potrebbe essere vuoto.\r\n(FILE_SIZE: %.2f MB)", float64(file_size)/1048576.0))
+			utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File potrebbe essere vuoto o non valido.\r\n(FILE_SIZE: %.2f MB)", float64(file_size)/1048576.0))
 		} else {
 			utils.PrintEvent("CACHE_REFUSED", fmt.Sprintf("Il File è troppo grande per essere caricato nella cache.\r\n(FILE_SIZE: %.2f MB > MAX: %.2f MB)", float64(file_size)/1048576.0, float64(max_size)/1048576.0))
 		}
@@ -203,68 +202,62 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 }
 
 func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName string) error {
-	utils.PrintEvent("CACHE_WRITE_INIT", "La procedura di scrittura sulla cache è terminata.")
+	utils.PrintEvent("CACHE_WRITE_INIT", "La procedura di scrittura sulla cache è iniziata.")
 	var localFile *os.File
 	var fileCreated bool = false
-	var errorOccurred bool = false
 	var err error = nil
-	var endLoop bool = false
 
-	for !endLoop {
-		select {
-		// Lettura dal canale di chunks
-		case chunk := <-redirectionChannel.ChunkChannel:
-			if len(chunk) == 0 {
-				endLoop = true
-				break
-			}
-			if errorOccurred {
-				break
-			}
-			// TODO Capire se si può portare fuori
-			if !fileCreated {
-				localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+	// Lettura dal canale di chunks
+	for message := range redirectionChannel.MessageChannel {
+		utils.PrintEvent("CACHE_CHANN", "Lettura Chunk da Canale")
+		// TODO Capire se si può portare fuori
+		if !fileCreated {
+			utils.PrintEvent("WRITE_CACHE", "Creazione File")
+			localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+			if err != nil {
+				// Impossibile creare il file -> consumiamo tutto sul canale e ritorniamo un errore
+				utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
+				redirectionChannel.ReturnChannel <- err
+				return err
+			} else {
+				// Creazione del file
+				defer localFile.Close()
+				fileCreated = true
+				err = syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
 				if err != nil {
-					// Impossibile creare il file -> consumiamo tutto sul canale e ritorniamo un errore
-					errorOccurred = true
-					utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
+					utils.PrintEvent("FILE_LOCK_ERR", fmt.Sprintf("Errore nel tentativo di prendere Lock sul file '%s' ", fileName))
 					redirectionChannel.ReturnChannel <- err
-				} else {
-					// Creazione del file
-					fileCreated = true
-					err = syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
-					if err != nil {
-						errorOccurred = true
-						utils.PrintEvent("FILE_LOCK_ERR", fmt.Sprintf("Errore nel tentativo di prendere Lock sul file '%s' ", fileName))
-						redirectionChannel.ReturnChannel <- err
-					} else {
-						defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
-					}
-					defer localFile.Close()
+					return err
 				}
-			}
-			// Scrittura file locale
-			_, err = localFile.Write(chunk)
-			if err != nil {
-				errorOccurred = true
-				os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-				utils.PrintEvent("CACHE_FAILURE", fmt.Sprintf("Impossibile scrivere il file '%s' nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
-				redirectionChannel.ReturnChannel <- err
-			}
-
-		// Si è verificato un errore nello scrivente
-		case err := <-redirectionChannel.ErrorChannel:
-			if err != nil {
-				os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-				utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
-				redirectionChannel.ReturnChannel <- err
+				defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
 			}
 		}
+
+		// C'è stato un errore lato scrivente --> Rimozione file dalla cache
+		utils.PrintEvent("WRITE_CACHE", "Ricezione Messaggio")
+		if message.Err != nil {
+			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
+			redirectionChannel.ReturnChannel <- err
+			return message.Err
+		}
+
+		// Scrittura file locale
+		utils.PrintEvent("WRITE_CACHE", "Scrittura Chunk")
+		_, err = localFile.Write(message.Body)
+		if err != nil {
+			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+			utils.PrintEvent("CACHE_FAILURE", fmt.Sprintf("Impossibile scrivere il file '%s' nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
+			redirectionChannel.ReturnChannel <- err
+			return err
+		}
 	}
-	if fileCreated && !errorOccurred {
+
+	if fileCreated {
 		utils.PrintEvent("CACHE_SUCCESS", fmt.Sprintf("File '%s' caricato localmente con successo", fileName))
 		redirectionChannel.ReturnChannel <- nil
 		return nil
 	}
-	return err
+	utils.PrintEvent("FILE_CREATED???????", fmt.Sprintln(fileCreated))
+	return fmt.Errorf("[*CACHE_ERR*] -> il file '%s' non è stato salvato in cache", fileName)
 }
