@@ -62,7 +62,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	response := client.Response{TicketId: ticketID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close clientstream.\r\nError: '%s'", err.Error()))
+		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
 	}
 
 	return nil
@@ -94,11 +94,21 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	if !cache.GetCache().IsFileInCache(requestMessage.FileName) {
 		// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
 		lookupReponse, err := lookupFileInNetwork(requestMessage)
+		var askS3 bool = true
 		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
-			sendFromOtherEdge(lookupReponse, requestMessage.FileName, downloadStream)
-		} else { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
-			redirectFromS3(requestMessage.FileName, downloadStream)
-			//TODO return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Couldn't locate requested file in specified bucket.\r\nError: '%s'", err.Error()))
+			err = sendFromOtherEdge(lookupReponse, requestMessage.FileName, downloadStream)
+			if err != nil {
+				utils.PrintEvent("OTHEREDGE_DOWNLOAD_ERROR", fmt.Sprintf("Impossibile recuperare file '%s' da altro edge... Ripiego su S3\r\nError: '%s'", requestMessage.FileName, err.Error()))
+			} else {
+				askS3 = false
+			}
+		}
+		if askS3 { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
+			err := redirectFromS3(requestMessage.FileName, downloadStream)
+			if err != nil {
+				utils.PrintEvent("S3_DOWNLOAD_ERROR", err.Error())
+				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Impossibile recuperare il file '%s' dal bucket specificato.\r\nError: '%s'", requestMessage.FileName, err.Error()))
+			}
 		}
 	} else { // ce l'ha l'edge corrente --> Leggi file e invia chunk
 		return sendFromLocalCache(requestMessage.FileName, downloadStream)
@@ -107,8 +117,8 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	return nil
 }
 
-func redirectFromS3(fileName string, downloadStream client.FileService_DownloadServer) {
-	utils.PrintEvent("S3_LOOKUP", fmt.Sprintf("looking for file '%s' in s3...", fileName))
+func redirectFromS3(fileName string, downloadStream client.FileService_DownloadServer) error {
+	utils.PrintEvent("S3_LOOKUP", fmt.Sprintf("Cercando il file '%s' in s3...", fileName))
 	var isFileCachable bool = false
 	fileSize, err := s3_boundary.GetFileSize(fileName)
 	if err != nil {
@@ -128,9 +138,7 @@ func redirectFromS3(fileName string, downloadStream client.FileService_DownloadS
 
 	err = redirectStreamToClient(clientRedirectionChannel, downloadStream)
 
-	if err != nil {
-		utils.PrintEvent("S3_ERROR", err.Error())
-	}
+	return err
 }
 
 func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileLookupResponse, error) {
@@ -143,7 +151,7 @@ func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileL
 	return lookupReponse, nil
 }
 
-func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, clientDownloadStream client.FileService_DownloadServer) {
+func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, clientDownloadStream client.FileService_DownloadServer) error {
 	utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", fileName, lookupResponse.OwnerEdge.IpAddr))
 	// 1] Open gRPC connection to ownerEdge
 	// 2] retrieve chunk by chunk (send to client + save in local)
@@ -157,7 +165,7 @@ func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, 
 	// Imposta la nuova dimensione massima
 	go downloadFromOtherEdge(lookupResponse, fileName, cacheRedirectionChannel, clientRedirectionChannel, isFileCachable)
 
-	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
+	return redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
 }
 
 func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, cacheRedirectionChannel channels.RedirectionChannel, clientRedirectionChannel channels.RedirectionChannel, isFileCacheable bool) {
@@ -190,7 +198,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
 	err = edgeDownloadStream.CloseSend()
 	if err != nil {
-		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Couldn't close download stream.\r\nError: '%s'", err.Error()))
+		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere downloadstream.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}

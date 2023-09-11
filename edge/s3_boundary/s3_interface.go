@@ -56,10 +56,10 @@ func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionCh
 		},
 	)
 	if err != nil {
-		utils.PrintEvent("S3_ERROR", fmt.Sprintf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error()))
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: err}
+		customErr := fmt.Errorf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error())
+		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		if isFileCachable {
-			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: err}
+			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
 		}
 		return err
 	}

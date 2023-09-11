@@ -44,7 +44,7 @@ func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 		adjacentsMap.connsMutex.Lock()
 		adjacentsMap.peerConns[edgePeer] = AdjConnection{peerConnection: conn, missedPing: 0}
 		adjacentsMap.connsMutex.Unlock()
-		utils.PrintEvent("PING_STATUS", fmt.Sprintf("adjacentsMap.peerConns[edgePeer] : \r\n%s", fmt.Sprintln(adjacentsMap.peerConns[edgePeer])))
+		utils.PrintEvent("NEIGHBOUR_RECOVERED", fmt.Sprintf("Il peer '%s' è stato riaggiunto tra i vicini.", edgePeer.PeerAddr))
 	}
 
 	return nil
@@ -95,7 +95,7 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 	fileRequestMessage.TTL--
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
-			utils.PrintEvent("LOOKUP_CONTINUE", fmt.Sprintf("Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad ulteriori vicini", fileRequestMessage.FileName))
+			utils.PrintEvent("LOOKUP_CONTINUE", fmt.Sprintf("Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad eventuali vicini", fileRequestMessage.FileName))
 			neighbourResponse, err := NeighboursFileLookup(fileRequestMessage)
 			if err != nil {
 				return err

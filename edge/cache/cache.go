@@ -58,7 +58,6 @@ func (cache *Cache) GetFileSize(file_name string) int64 {
 
 func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, file_name string, file_size int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?) // implementare login e fare un servizio per-user)
-	// TODO Gestire il recupero dei file in cache
 
 	_, alreadyExists := cache.cachingMap[file_name]
 	if alreadyExists {
@@ -89,14 +88,41 @@ func (cache *Cache) insertFileInQueue(file_name string, file_size int64) {
 	cache.cachingQueue = append(cache.cachingQueue, File{file_name, file_size})
 }
 
-func (cache *Cache) RemoveFileFromCache(file_name string) {
-	// Eliminazione del file dal filesystem//TODO prendere lock?
-	err := os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + file_name)
+func (cache *Cache) RemoveFileFromCache(fileName string) {
+	// Eliminazione del file dal filesystem
+	err := removeWithLocks(fileName)
 	if err != nil {
 		utils.PrintEvent("CACHE_REMOVE_ERR", fmt.Sprintf("Errore durante l'eliminazione del file: '%s'", err.Error()))
 		return
 	}
-	cache.removeFileFromQueue(file_name)
+	cache.removeFileFromQueue(fileName)
+}
+
+func removeWithLocks(fileName string) error {
+	// Apertura file
+	filePath := utils.GetEnvironmentVariable("FILES_PATH") + fileName
+	file, err := os.OpenFile(filePath, os.O_WRONLY, 0666)
+	if err != nil {
+		fmt.Println("Errore durante l'apertura del file: ", err)
+		return err
+	}
+	defer file.Close()
+	// Tentiamo di prendere lock esclusivo sul file
+	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
+	if err != nil {
+		return fmt.Errorf("[*FILE_LOCK_ERR*] -> Errore nel tentativo di prendere Lock sul file '%s' ", fileName)
+	}
+	// Ora che abbiamo il lock, eliminiamo il file
+	err = os.Remove(filePath)
+	if err != nil {
+		return fmt.Errorf("[*FILE_DELETE_ERR*] -> Errore nel tentativo di eliminare il Lock sul file '%s' ", fileName)
+	}
+	// Rilasciamo infine il lock
+	err = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	if err != nil {
+		return fmt.Errorf("[*FILE_UNLOCK_ERR*] -> Errore nel tentativo di rilasciare Lock sul file '%s' ", fileName)
+	}
+	return nil
 }
 
 func (cache *Cache) ActivateCacheRecovery() {
@@ -121,6 +147,7 @@ func (cache *Cache) removeFileFromQueue(file_name string) {
 
 	index, err := cache.getIndex(file_name)
 	if err != nil {
+		// La mappa e la coda sono inconsistenti, quindi attivare meccanismo di cache recovery
 		cache.ActivateCacheRecovery()
 		return
 	}
@@ -137,10 +164,6 @@ func freeMemoryForInsert(file_size int64, cache *Cache) {
 	// piuttosto che eliminare gli ultimi e basta
 	for {
 		if retrieveFreeMemorySize() < file_size {
-			// lenght := len(cache.cachingQueue)
-			// if lenght == 0 {
-			// 	cache.RemoveFileFromCache(cache.cachingQueue[0].file_name)
-			// }
 			cache.RemoveFileFromCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
 		} else {
 			break
@@ -209,18 +232,16 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 
 	// Lettura dal canale di chunks
 	for message := range redirectionChannel.MessageChannel {
-		utils.PrintEvent("CACHE_CHANN", "Lettura Chunk da Canale")
 		// TODO Capire se si può portare fuori
 		if !fileCreated {
-			utils.PrintEvent("WRITE_CACHE", "Creazione File")
 			localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 			if err != nil {
-				// Impossibile creare il file -> consumiamo tutto sul canale e ritorniamo un errore
+				// Impossibile creare il file -> ritorniamo un errore
 				utils.PrintEvent("CACHE_ERROR", "Creazione del file locale fallita")
 				redirectionChannel.ReturnChannel <- err
 				return err
 			} else {
-				// Creazione del file
+				// Il file è stato creato correttamente
 				defer localFile.Close()
 				fileCreated = true
 				err = syscall.Flock(int(localFile.Fd()), syscall.F_WRLCK)
@@ -234,7 +255,6 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 		}
 
 		// C'è stato un errore lato scrivente --> Rimozione file dalla cache
-		utils.PrintEvent("WRITE_CACHE", "Ricezione Messaggio")
 		if message.Err != nil {
 			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
@@ -243,7 +263,6 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 		}
 
 		// Scrittura file locale
-		utils.PrintEvent("WRITE_CACHE", "Scrittura Chunk")
 		_, err = localFile.Write(message.Body)
 		if err != nil {
 			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
@@ -258,6 +277,5 @@ func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName
 		redirectionChannel.ReturnChannel <- nil
 		return nil
 	}
-	utils.PrintEvent("FILE_CREATED???????", fmt.Sprintln(fileCreated))
 	return fmt.Errorf("[*CACHE_ERR*] -> il file '%s' non è stato salvato in cache", fileName)
 }

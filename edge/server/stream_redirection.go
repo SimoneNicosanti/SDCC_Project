@@ -79,7 +79,6 @@ func rcvAndRedirectChunks(mainRedirectionChannel channels.RedirectionChannel, ca
 
 func redirectStreamToClient(clientRedirectionChannel channels.RedirectionChannel, clientDownloadStream client.FileService_DownloadServer) error {
 	defer close(clientRedirectionChannel.ReturnChannel)
-
 	for message := range clientRedirectionChannel.MessageChannel {
 		if message.Err != nil {
 			return message.Err

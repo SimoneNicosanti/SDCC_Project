@@ -150,7 +150,10 @@ func temporizedNotifyBloomFilters() {
 	FILTER_NOTIFY_TIME := utils.GetIntEnvironmentVariable("FILTER_NOTIFY_TIME")
 	for {
 		time.Sleep(time.Duration(FILTER_NOTIFY_TIME) * time.Second)
-		notifyBloomFiltersToAdjacents()
+		err := notifyBloomFiltersToAdjacents()
+		if err != nil {
+			utils.PrintEvent("FILTER_ERROR", err.Error())
+		}
 	}
 }
 
@@ -167,19 +170,21 @@ func notifyBloomFiltersToAdjacents() error {
 		return err
 	}
 
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_CALL")))
 	for edgePeer, adjConn := range adjacentsMap.peerConns {
 		filterMessage := BloomFilterMessage{EdgePeer: SelfPeer, BloomFilter: filterEncode}
-		err := adjConn.peerConnection.Call("EdgePeer.NotifyBloomFilter", filterMessage, new(int))
-		//context.WithTimeout()
-		if err != nil {
-			utils.PrintEvent("FILTER_ERROR", "impossibile inviare filtro di bloom a "+edgePeer.PeerAddr+".\r\nL'errore restituito è: '"+err.Error()+"'.")
-			return err
+		call := adjConn.peerConnection.Go("EdgePeer.NotifyBloomFilter", filterMessage, new(int), nil)
+		select {
+		case <-call.Done:
+			if call.Error != nil {
+				return fmt.Errorf("impossibile inviare filtro di bloom a " + edgePeer.PeerAddr + ".\r\nL'errore restituito è: '" + call.Error.Error() + "'.")
+			}
+		case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_FILTER"))):
+			return fmt.Errorf("[*TIMEOUT_ERROR*] -> Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_FILTER"), edgePeer.PeerAddr)
 		}
+
 	}
 
 	return nil
-
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResponse, error) {

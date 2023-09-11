@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,7 +35,6 @@ var rabbitChannel *amqp.Channel
 func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 	encoded, err := json.Marshal(ticket)
 	if err != nil {
-		utils.PrintEvent("MARSHAL_ERROR", "Error in marshaling Ticket for RabbitMQ")
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -43,34 +43,37 @@ func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
 		ContentType: "text/plain",
 		Body:        encoded,
 	})
-	if err != nil {
-		utils.PrintEvent("RABBITMQ_ERROR", "Error in publishing ticket on RabbitMQ")
-		return err
-	} else {
-		utils.PrintEvent("TICKET_PUBLISHED", "il ticket '"+ticket.Id+"' è stato pubblicato")
-	}
-	return nil
+
+	return err
 }
 
-func publishNewTicket(oldTicketIndex int) error {
+func publishNewTicket(oldTicketIndex int) {
 	count := 0
 	ticket := createTicket(oldTicketIndex)
 	for count < 3 {
 		err := attemptPublishTicket(rabbitChannel, ticket)
 		// La funzione ritorna al primo tentativo con successo
 		if err == nil {
-			return nil
+			utils.PrintEvent("TICKET_PUBLISHED", fmt.Sprintf("il ticket '%s' è stato pubblicato", ticket.Id))
+			return
+		} else {
+			if strings.Contains(err.Error(), "Exception (504) Reason: \"channel/connection is not open\"") { //TODO da controllare
+				setupRabbitMQ()
+			}
 		}
 		count++
-		log.Println(err.Error())
+		utils.PrintEvent("RABBITMQ_ERROR", fmt.Sprintf("Impossibile pubblicare ticket '%s' su rabbitMQ per la %d volta.\r\nL'errore restituito è: '%s'", ticket.Id, count, err.Error()))
 	}
 	// Dopo tre tentativi falliti verrà generato un errore
-	return fmt.Errorf("[*ERROR*] -> All the attempts to publish ticket '%s' failed", ticket.Id)
+	utils.PrintEvent("RABBITMQ_ERROR", fmt.Sprintf("Tutti i tentativi di pubblicare il ticket '%s' non hanno avuto successo", ticket.Id))
+	//TODO errore fatale!!
+	log.Panic("FATAL_ERR -> rabbitmq fatal err")
+
 }
 
 func createTicket(oldTicketIndex int) Ticket {
 	randomID, err := utils.GenerateUniqueRandomID(authorizedTicketIDs.IDs)
-	utils.ExitOnError("[*ERROR*] -> Error generating random ID for ticket", err)
+	utils.ExitOnError("[*ERROR*] -> Impossibile generare un ID random", err)
 	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
 	ticket := Ticket{serverEndpoint, randomID}
 	utils.PrintEvent("TICKET_GENERATED", "il ticket '"+randomID+"' è stato generato")
@@ -94,8 +97,7 @@ func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
 		IDs:   make([]string, utils.GetIntEnvironmentVariable("EDGE_TICKETS_NUM")),
 	}
 	for i := 0; i < len(authorizedTicketIDs.IDs); i++ {
-		err := publishNewTicket(i)
-		utils.ExitOnError("[*ERROR*] -> Impossibile pubblicare ticket sulla coda\r\n", err)
+		publishNewTicket(i)
 	}
 }
 

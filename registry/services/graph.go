@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"registry/utils"
+	"time"
 )
 
 type Graph struct {
@@ -22,12 +23,16 @@ func buildGraph(graph *Graph) {
 		_, hasHeartbeat := peerMap.heartbeats[peer]
 		if hasHeartbeat {
 			neighboursPtr := new(map[EdgePeer]byte)
-			err := conn.Call("EdgePeer.GetNeighbours", 0, neighboursPtr)
-			if err != nil {
-				utils.PrintEvent("GRAPH_ERROR", fmt.Sprintf("Ottenimento vicini del nodo '%s' non riuscita", peer.PeerAddr))
-				continue
+			call := conn.Go("EdgePeer.GetNeighbours", 0, neighboursPtr, nil)
+			select {
+			case <-call.Done:
+				if call.Error != nil {
+					utils.PrintEvent("GRAPH_ERROR", fmt.Sprintf("Ottenimento vicini del nodo '%s' non riuscita", peer.PeerAddr))
+				}
+				graph.AddNodeAndConnections(peer, *neighboursPtr)
+			case <-time.After(time.Second * time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
+				utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), peer.PeerAddr))
 			}
-			graph.AddNodeAndConnections(peer, *neighboursPtr)
 		}
 	}
 

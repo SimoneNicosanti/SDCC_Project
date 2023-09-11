@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// TODO Aggiungere logica per cui se il Ping fallisce per x volte allora è dato per morto
 // TODO Aggiungere logica per cui se ricevo Ping da un nodo che non è mio vicino allora lo aggiungo perché lo avevo dato per morto
 func pingsToAdjacents() {
 	utils.PrintEvent("PING_STARTED", "Inizio meccanismo di ping verso i vicini")
@@ -24,23 +23,33 @@ func pingFunction() {
 	defer adjacentsMap.connsMutex.Unlock()
 
 	for adjPeer, adjConn := range adjacentsMap.peerConns {
-		err := adjConn.peerConnection.Call("EdgePeer.Ping", SelfPeer, new(int))
-		if err != nil {
-			adjConn.missedPing++
-			adjacentsMap.peerConns[adjPeer] = adjConn
-			utils.PrintEvent("MISSED_PING", fmt.Sprintf("Nessuna risposta da '%s' per la %d volta", adjPeer.PeerAddr, adjConn.missedPing))
-			// Il peer non risponde al Ping per X volte consecutive --> Rimozione dalla lista
-			if adjConn.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
-				adjacentsMap.peerConns[adjPeer].peerConnection.Close()
-				delete(adjacentsMap.peerConns, adjPeer)
-				removeBloomFilter(adjPeer)
-				utils.PrintEvent("REMOVED_NEIGHBOUR", fmt.Sprintf("Rimosso vicino '%s' dopo %d missed pings", adjPeer.PeerAddr, adjConn.missedPing))
+		call := adjConn.peerConnection.Go("EdgePeer.Ping", SelfPeer, new(int), nil)
+		select {
+		case <-call.Done:
+			if call.Error != nil {
+				timeoutAction(adjConn, adjPeer)
+				break
 			}
-		} else {
 			// Se il peer risponde, allora azzero il numero di ping mancati
 			adjConn.missedPing = 0
 			adjacentsMap.peerConns[adjPeer] = adjConn
+		case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_PING"))):
+			// Il peer non risponde al Ping per X volte consecutive --> Rimozione dalla lista
+			timeoutAction(adjConn, adjPeer)
 		}
+	}
+}
+
+func timeoutAction(adjConn AdjConnection, adjPeer EdgePeer) {
+	adjConn.missedPing++
+	adjacentsMap.peerConns[adjPeer] = adjConn
+	utils.PrintEvent("PING_MISSED", fmt.Sprintf("Nessuna risposta da '%s' per la %d volta", adjPeer.PeerAddr, adjConn.missedPing))
+
+	if adjConn.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
+		adjacentsMap.peerConns[adjPeer].peerConnection.Close()
+		delete(adjacentsMap.peerConns, adjPeer)
+		removeBloomFilter(adjPeer)
+		utils.PrintEvent("NEIGHBOUR_REMOVED", fmt.Sprintf("Il vicino '%s' è stato rimosso dopo %d missed pings", adjPeer.PeerAddr, adjConn.missedPing))
 	}
 }
 

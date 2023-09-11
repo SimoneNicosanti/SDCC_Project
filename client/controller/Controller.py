@@ -68,7 +68,7 @@ def getTicket() -> Ticket:
     serverEndpoint = data['ServerEndpoint']
     ticket_id = data['Id']
     ticket = Ticket(serverEndpoint, ticket_id)
-    Debug.debug(f"Acquired ticket '{ticket_id}' on connection {ticket.peer_addr}'")
+    Debug.debug(f"Ottenuto il ticket '{ticket_id}' sulla connessione {ticket.peer_addr}'")
     return ticket
 
 
@@ -89,7 +89,7 @@ def execAction(ticket_id : str, requestType : Method, filename : str, stub : Fil
 
     return result
 
-# TODO Se il file non esiste non inoltrare la richiesta
+
 def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
     try:
         # Otteniamo i chunks dalla chiamata gRPC
@@ -128,7 +128,7 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
             metadata = (('file_name', filename), ('ticket_id', ticket_id), ('file_size', str(file_size)), )
         )
     except IOError as e:
-            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
+            raise MyErrors.FailedToOpenException(f"Impossibile aprire file: {str(e)}")
     except grpc.RpcError as e:
         print(e.code())
         print(e.code().value)
@@ -201,6 +201,6 @@ class FileService:
                 for chunk in chunk_list:
                     file.write(chunk.chunk)
         except IOError as e:
-            raise MyErrors.FailedToOpenException(f"Couldn't open the file: {str(e)}")
+            raise MyErrors.FailedToOpenException(f"Impossibile aprire file: {str(e)}")
 
         return True
