@@ -108,14 +108,12 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 }
 
 func findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
-	// peerNum := len(graphMap.peerMap)
 	createdEdge := false
 	neighboursList := map[EdgePeer]byte{}
 	for peer := range peerMap.heartbeats {
 		if peer == edgePeer {
 			continue
 		}
-		// TODO Fare prima shuffle delle chiavi per non legare tutti i nodi al primo che viene restituito
 		var thereIsEdge bool
 		if !createdEdge {
 			thereIsEdge = true

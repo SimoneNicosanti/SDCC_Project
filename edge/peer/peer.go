@@ -17,11 +17,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// TODO : Ricezione dei ping -> se ricevo un ping/richiesta di qualcuno che non conosco, allora lo inserisco come vicino
-// Logica di rilevamento errori: heartbeat verso il registry e ping verso i vicini.
-// In caso di caduta del registry, questo può richiedere ai peer di comunicargli i loro vicini in modo tale che il registry
-// può ricreare la rete.
-
 var SelfPeer EdgePeer
 var peerFileServer PeerFileServer
 var registryClient *rpc.Client

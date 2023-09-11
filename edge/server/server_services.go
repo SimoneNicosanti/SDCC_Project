@@ -40,8 +40,6 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	s3RedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 
-	// TODO Defer chiusura canali
-
 	// Ridirezione del flusso sulla cache
 	isFileCacheable := cache.IsFileCacheable(fileSize)
 	if isFileCacheable {
@@ -82,7 +80,7 @@ func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, str
 	return ticketID, file_name, file_size, false, nil
 }
 
-// TODO impostare un timer dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
+// TODO impostare un timer (sulla lookup) dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.TicketId))
 	isValidRequest := checkTicket(requestMessage.TicketId)

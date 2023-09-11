@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// TODO Aggiungere logica per cui se ricevo Ping da un nodo che non è mio vicino allora lo aggiungo perché lo avevo dato per morto
 func pingsToAdjacents() {
 	utils.PrintEvent("PING_STARTED", "Inizio meccanismo di ping verso i vicini")
 	PING_FREQUENCY := utils.GetIntEnvironmentVariable("PING_FREQUENCY")
