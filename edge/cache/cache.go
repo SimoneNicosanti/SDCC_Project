@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 
 	bloom "github.com/tylertreat/BoomFilters"
 )
@@ -21,71 +22,76 @@ import (
 */
 
 type File struct {
-	file_name string
-	file_size int64
+	fileName   string
+	fileSize   int64
+	timestamp  time.Time
+	popularity int
 }
 
 type Cache struct {
 	cachingQueue []File
-	cachingMap   map[string]byte
+	cachingMap   map[string]File
 	mutex        sync.RWMutex
 }
 
 var selfCache Cache = Cache{
 	cachingQueue: []File{},
-	cachingMap:   map[string]byte{},
+	cachingMap:   map[string]File{},
 	mutex:        sync.RWMutex{}}
 
 func GetCache() *Cache {
 	return &selfCache
 }
 
-func (cache *Cache) IsFileInCache(file_name string) bool {
-	_, is := cache.cachingMap[file_name]
+func (cache *Cache) IsFileInCache(fileName string) bool {
+	_, is := cache.cachingMap[fileName]
 	return is
 }
 
-func (cache *Cache) GetFileSize(file_name string) int64 {
+func (cache *Cache) GetFileSize(fileName string) int64 {
 
 	for _, file := range cache.cachingQueue {
-		if file.file_name == file_name {
-			return file.file_size
+		if file.fileName == fileName {
+			return file.fileSize
 		}
 	}
 
 	return -1
 }
 
-func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, file_name string, file_size int64) {
+func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, fileName string, fileSize int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?) // implementare login e fare un servizio per-user)
 
-	_, alreadyExists := cache.cachingMap[file_name]
+	file, alreadyExists := cache.cachingMap[fileName]
 	if alreadyExists {
 		// Se esiste già, reinserisci il file in testa alla coda
-		cache.removeFileFromQueue(file_name)
-		cache.insertFileInQueue(file_name, file_size)
+		file.popularity++
+		utils.PrintEvent("POPULARITY_INCREMENTED", fmt.Sprintf("La popolarità del File '%s' è salita al valore di '%d'", fileName, file.popularity))
+		//TODO controllare se funziona, altrimenti aggiungere questa riga di codice:
+		// cache.cachingMap[fileName] = file
 		return
 	} else {
-		if IsFileCacheable(file_size) {
-			freeMemoryForInsert(file_size, cache)
-			err := writeChunksInCache(redirectionChannel, file_name)
+		if IsFileCacheable(fileSize) {
+			cache.freeMemoryForInsert(fileSize)
+			err := writeChunksInCache(redirectionChannel, fileName)
 			if err != nil {
 				utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
 				return
 			}
-			cache.insertFileInQueue(file_name, file_size)
+			cache.insertFileInQueue(fileName, fileSize, 1)
 		}
 	}
 }
 
-func (cache *Cache) insertFileInQueue(file_name string, file_size int64) {
+func (cache *Cache) insertFileInQueue(fileName string, fileSize int64, filePopularity int) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
+	newFile := File{fileName, fileSize, time.Now(), 1}
 	// Inserimento del file nella mappa
-	cache.cachingMap[file_name] = 0
+	cache.cachingMap[fileName] = newFile
 	// Inserimento del file nella coda
-	cache.cachingQueue = append(cache.cachingQueue, File{file_name, file_size})
+	cache.cachingQueue = append(cache.cachingQueue, newFile)
 }
 
 func (cache *Cache) RemoveFileFromCache(fileName string) {
@@ -125,6 +131,28 @@ func removeWithLocks(fileName string) error {
 	return nil
 }
 
+func (cache *Cache) StartCache() {
+	cache.ActivateCacheRecovery()
+	go cache.cleanCachePeriodically()
+}
+
+func (cache *Cache) cleanCachePeriodically() {
+	for {
+		time.Sleep(time.Duration(utils.GetIntEnvironmentVariable("CACHE_CLEANING_FREQUENCY")))
+		cache.deleteExpiredFiles()
+	}
+}
+
+func (cache *Cache) deleteExpiredFiles() {
+	for _, file := range cache.cachingQueue {
+		if file.timestamp.Add(time.Duration(utils.GetInt64EnvironmentVariable("TIME_TO_DELETION"))).After(time.Now()) {
+			cache.RemoveFileFromCache(file.fileName)
+			utils.PrintEvent("FILE_DELETED", fmt.Sprintf("Il File '%s' è stato rimosso dalla cache a seguito della procedura periodica di cleanup.", file.fileName))
+			convertAndPrintCachingMap(cache.cachingMap)
+		}
+	}
+}
+
 func (cache *Cache) ActivateCacheRecovery() {
 	utils.PrintEvent("CACHE_RECOVERY_STARTED", "Trovata inconsistenza nella cache.\r\nProcedura di ripristino iniziata.")
 	files, err := ioutil.ReadDir(utils.GetEnvironmentVariable("FILES_PATH"))
@@ -135,10 +163,18 @@ func (cache *Cache) ActivateCacheRecovery() {
 
 	for _, file := range files {
 		if !file.IsDir() {
-			cache.insertFileInQueue(file.Name(), file.Size())
+			cache.insertFileInQueue(file.Name(), file.Size(), 0)
 		}
 	}
-	utils.PrintCustomMap(cache.cachingMap, "Nessun file in cache...", "File trovati nella cache", "CACHE_RECOVERY_OK")
+	convertAndPrintCachingMap(cache.cachingMap)
+}
+
+func convertAndPrintCachingMap(cachingMap map[string]File) {
+	printableCacheMap := make(map[string]byte)
+	for fileName := range cachingMap {
+		printableCacheMap[fileName] = 0
+	}
+	utils.PrintCustomMap(printableCacheMap, "Nessun file in cache...", "File trovati nella cache", "CACHE_RECOVERY_OK")
 }
 
 func (cache *Cache) removeFileFromQueue(file_name string) {
@@ -158,13 +194,15 @@ func (cache *Cache) removeFileFromQueue(file_name string) {
 	cache.cachingQueue = append(cache.cachingQueue[:index], cache.cachingQueue[index+1:]...)
 }
 
-func freeMemoryForInsert(file_size int64, cache *Cache) {
+func (cache *Cache) freeMemoryForInsert(file_size int64) {
 	// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
 	//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
 	// piuttosto che eliminare gli ultimi e basta
+	cache.deleteExpiredFiles()
+
 	for {
 		if retrieveFreeMemorySize() < file_size {
-			cache.RemoveFileFromCache(cache.cachingQueue[len(cache.cachingQueue)-1].file_name)
+			cache.RemoveFileFromCache(cache.cachingQueue[len(cache.cachingQueue)-1].fileName)
 		} else {
 			break
 		}
@@ -203,7 +241,7 @@ func (cache *Cache) getIndex(file_name string) (int, error) {
 		return -1, nil
 	}
 	for i, file := range cache.cachingQueue {
-		if file.file_name == file_name {
+		if file.fileName == file_name {
 			return i, nil
 		}
 	}
@@ -218,7 +256,7 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 		utils.GetUintEnvironmentVariable("FILTER_N"),
 		utils.GetFloatEnvironmentVariable("FALSE_POSITIVE_RATE"))
 	for _, file := range cache.cachingQueue {
-		newFilter.Add([]byte(file.file_name))
+		newFilter.Add([]byte(file.fileName))
 	}
 
 	return newFilter

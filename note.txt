@@ -34,12 +34,10 @@ RAGIONIAMO
 ============================================
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
-0] vedere se serve inserire altri timer su chiamate goRPC
 1] raffinare meccanismi di cache (eliminazione più efficiente / pensare alla popolarità / qualcosa in-memory(?))
 2] limitare risorse come descritto sopra
 3] ricerca file con callback
-4] implementare countdown_to_deletion
-5] implementare procedura di login e gestione
+4] implementare procedura di login e gestione
 
 N-1] testing come descritto sopra
 N] inventare storiella per presentare

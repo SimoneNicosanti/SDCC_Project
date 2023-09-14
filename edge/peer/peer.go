@@ -39,10 +39,10 @@ func ActAsPeer() {
 
 	//Connessione al server Registry per l'inserimento nella rete
 	adj := new(map[EdgePeer]byte)
-	registryClientPtr, errorMessage, err := registerToRegistry(edgePeerPtr, adj)
+	registryClientPtr, err := registerToRegistry(edgePeerPtr, adj)
 	registryClient = registryClientPtr
 
-	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server: "+errorMessage, err)
+	utils.ExitOnError(fmt.Sprintf("[*ERROR*] -> Impossibile registrare il servizio sul registry server: '%s'", err.Error()), err)
 	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
 	stringAdjMap := make(map[string]byte)
 	for peer := range *adj {
@@ -103,18 +103,23 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 	}
 }
 
-func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, string, error) {
+func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, error) {
 	registryAddr := "registry:1234"
 
 	client, err := ConnectToNode(registryAddr)
 	utils.ExitOnError("", err)
 
-	err = client.Call("RegistryService.PeerEnter", *edgePeerPtr, adj)
-	if err != nil {
-		return nil, "[*ERROR*] -> Errore durante la registrazione al Registry Server", err
+	call := client.Go("RegistryService.PeerEnter", *edgePeerPtr, adj, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			return nil, fmt.Errorf("[*ERROR*] -> Errore durante la registrazione al Registry Server. L'errore restituito dalla call è: '%s'", err.Error())
+		}
+	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
+		return nil, fmt.Errorf("[*TIMEOUT_ERROR*] -> Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"), edgePeerPtr.PeerAddr)
 	}
 
-	return client, "", nil
+	return client, nil
 }
 
 func registerServiceForEdge(ipAddrStr string, edgePeerPtr *EdgePeer) (string, error) {
@@ -259,7 +264,17 @@ func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer
 	if adj != fileRequestMessage.SenderPeer {
 		fileLookupResponsePtr := new(FileLookupResponse)
 		adjConn := adjacentsMap.peerConns[adj]
-		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
+
+		call := adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
+		select {
+		case <-call.Done:
+			if call.Error != nil {
+				return false
+			}
+		case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
+			return false
+		}
+
 		return true
 	}
 	return false

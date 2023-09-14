@@ -103,7 +103,8 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 			*returnPtr = neighbourResponse
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
-			return fmt.Errorf("[*LOOKUP_END*] -> Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName)
+			utils.PrintEvent("LOOKUP_END", fmt.Sprintf("Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName))
+			return fmt.Errorf("[*LOOKUP_END*] -> Il File richiesto non è stato trovato")
 		}
 	} else { //file FOUND in local memory --> i have it! ;)
 		file_size := cache.GetCache().GetFileSize(fileRequestMessage.FileName)

@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"edge/utils"
 	"errors"
 	"fmt"
 	"net/rpc"
@@ -63,12 +64,16 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
-
-	err := client.Call("EdgePeer.AddNeighbour", neighbourPeer, nil)
-
-	if err != nil {
-		return errors.New("impossibile stabilire connessione con il nuovo vicino")
+	call := client.Go("EdgePeer.AddNeighbour", neighbourPeer, nil, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			return errors.New("impossibile stabilire connessione con il nuovo vicino")
+		}
+	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
+		return fmt.Errorf("")
 	}
+
 	return nil
 }
 

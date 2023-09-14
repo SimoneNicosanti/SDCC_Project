@@ -96,12 +96,21 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 				firstNodeConn := peerMap.connections[firstCompNode]
 				secondNodeConn := peerMap.connections[secondCompNode]
 
-				err_1 := firstNodeConn.Call("EdgePeer.AddNeighbour", secondCompNode, nil)
-				err_2 := secondNodeConn.Call("EdgePeer.AddNeighbour", firstCompNode, nil)
-				if err_1 != nil && err_2 != nil {
-					createdAnEdge = true
+				call_1 := firstNodeConn.Go("EdgePeer.AddNeighbour", secondCompNode, 0, nil)
+				call_2 := secondNodeConn.Go("EdgePeer.AddNeighbour", firstCompNode, 0, nil)
+				//controlliamo se almeno una delle due call abbia successo (l'altro verso dell'edge verrà ricostruito in un secondo momento eventualmente dopo la ricezione di un ping)
+				select {
+				case <-call_1.Done:
+					if call_1.Error == nil {
+						createdAnEdge = true
+					}
+				case <-call_2.Done:
+					if call_2.Error == nil {
+						createdAnEdge = true
+					}
+				case <-time.After(time.Second * time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
+					utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Durante un tentativo di unificazione di componenti connesse non è stata ricevuta una risposta entro %d secondi da '%s' o '%s'", utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), firstCompNode.PeerAddr, secondCompNode.PeerAddr))
 				}
-
 			}
 		}
 	}

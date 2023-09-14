@@ -102,7 +102,7 @@ func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
 }
 
 func ActAsServer() {
-	cache.GetCache().ActivateCacheRecovery()
+	cache.GetCache().StartCache()
 	setUpGRPC()
 	setupRabbitMQ()
 	publishAllTicketsOnQueue(rabbitChannel)
