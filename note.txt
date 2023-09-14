@@ -1,0 +1,45 @@
+=========================================
+RAGIONIAMO
+=========================================
+0] incolliamo ogni volta le credenziali del lab aws (è normale?) --> SI
+1] rete p2p non strutturata con nuove connessioni probabilistiche e casuali (Erdős–Rényi model) --> OK
+2] rabbitmq con token (load balancing) --> COME VE PARE MA INSOMMA
+3] filtri di bloom ricerca nella rete --> DAJE
+4] la rete di edge fa caching (si appoggia di base su S3) --> OK
+5] interfaccia CLI --> OK
+6] meccanismo heartbeat al registry --> OK
+7] meccanismo ping edge-edge --> OK
+8] build graph periodico da parte del registry (pull sulle info sui neighbours + calcolo componenti connesse ed eventuale unificazione) --> OK
+9] timer sulle chiamate goRPC (evitiamo freeze della rete se succede qualcosa su un edge) --> OK(vedere se serve anche altrove)
+10] meccanismo di caching time based + threshold sulla dimensione dei file --> POPOLARITA' SAREBBE MEGLIO --> raffinare meccanismo (?) --> qualcosa in-memory ?
+11] DOMINIO DI APPLICAZIONE (necessità, caratteristiche, richieste su prestazioni/risorse etc etc...) --> DECIDETE VOI --> IoT devices in same organization / Global storage service (algoritmo vivaldi)
+12] quali sono le risorse limitate e come limitarle --> TUTTE QUELLE POSSIBILI (raspberryPI systems)
+    -bisogna limitare:
+        > CPU / MEMORIA / DISCO --> cpu e memoria con docker || disco (creare partizione disco nel dockerfile e limitarne la memoria)
+        > connessioni(numero di vicini / client serviti) --> abbiamo introdotto token / vedere se si può limitare il numero di connessioni direttamente su rpc
+        > thread? --> Problema per thread che gestiscono le richieste dei client o degli altri edge (legato al numero di )
+13] ricerca file hop by hop con caching oppure callback (e nel caso come?) --> BOH, VEDETE VOI
+14] consistenza in generale + come gestire la cancellazione "distribuita" di un file: (NB: stabilire il livello di consistenza che si vuole raggiungere)
+        IDEA: countdown_to_deletion su singolo file --> consistenza finale / nessuno scambio / unico costo è quello eventualmente di riaggiungerlo se fosse popolare (aiuta anche a resettare la popolarità)
+15] timestamp su file / username con login / ibrido (pubblico/privato) --> a seconda delle assunzioni
+        IDEA: sistema locale ma storage pubblico --> login (versioning solo tra i vari "client") 
+                es: sensore 2 usa file di sensore 6 allora lui sa che deve richiedere "get pump_data_u6.csv" --> ogni user è responsabile del versioning dei suoi file
+16] testing:
+        test rispetto a situazione di base (solo cloud)
+        test molte get / test intermedio / test molte put (box plot su tempi di risposta)
+        test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
+        come i parametri di configurazione influenzano le prestazioni
+
+
+============================================
+TODO TODO TODO TODO TODO TODO TODO TODO TODO
+============================================
+0] vedere se serve inserire altri timer su chiamate goRPC
+1] raffinare meccanismi di cache (eliminazione più efficiente / pensare alla popolarità / qualcosa in-memory(?))
+2] limitare risorse come descritto sopra
+3] ricerca file con callback
+4] implementare countdown_to_deletion
+5] implementare procedura di login e gestione
+
+N-1] testing come descritto sopra
+N] inventare storiella per presentare

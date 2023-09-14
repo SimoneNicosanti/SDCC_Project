@@ -52,6 +52,9 @@ func (uploadStream *UploadStream) Read(dest []byte) (bytesInDest int, err error)
 }
 
 func (downloadStream *DownloadStream) WriteAt(source []byte, off int64) (bytesSent int, err error) {
+	//TODO aggiungere controllo sui canali di errore dei riceventi
+	//TODO (se c'è errore -> stop se è sul canale principale altrimenti smetti di inviare sulla cache e bassta)
+
 	// Se il Concurrency del Downloader è impostato ad 1 non serve usare l'offset
 	clientCopy := make([]byte, len(source))
 	copy(clientCopy, source)
