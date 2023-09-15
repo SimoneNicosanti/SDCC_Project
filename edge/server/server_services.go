@@ -9,7 +9,6 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"syscall"
 
@@ -204,6 +203,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	}
 }
 
+// Invia il file al client direttamente dalla cache locale
 func sendFromLocalCache(fileName string, clientDownloadStream client.FileService_DownloadServer) error {
 	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 	go readFromLocalCache(fileName, clientRedirectionChannel)
@@ -211,11 +211,12 @@ func sendFromLocalCache(fileName string, clientDownloadStream client.FileService
 	return nil
 }
 
-func readFromLocalCache(fileName string, clientRedirectionChannel channels.RedirectionChannel) error {
+func readFromLocalCache(fileName string, clientRedirectionChannel channels.RedirectionChannel) {
 	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
-	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+	localFile, err := cache.GetCache().GetFileForReading(fileName)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
+		utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile aprire il file '%s'.", fileName))
+		return
 	}
 	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
 	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
@@ -235,5 +236,4 @@ func readFromLocalCache(fileName string, clientRedirectionChannel channels.Redir
 		}
 		clientRedirectionChannel.MessageChannel <- channels.Message{Body: buffer[:bytesRead], Err: nil}
 	}
-	return nil
 }

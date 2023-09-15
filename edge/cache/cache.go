@@ -2,16 +2,20 @@ package cache
 
 import (
 	"edge/channels"
+	"edge/proto/client"
 	"edge/utils"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
 
 	bloom "github.com/tylertreat/BoomFilters"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 /*
@@ -28,16 +32,26 @@ type File struct {
 	popularity int
 }
 
+//implementazione sort.Interface per l'ordinamento dei file per popolarità crescente
+type ByPopularity []File
+
+func (f ByPopularity) Len() int           { return len(f) }
+func (f ByPopularity) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
+func (f ByPopularity) Less(i, j int) bool { return f[i].popularity < f[j].popularity }
+
 type Cache struct {
-	cachingQueue []File
-	cachingMap   map[string]File
-	mutex        sync.RWMutex
+	cachingList        []File
+	cachingMap         map[string]File
+	cacheMutex         sync.RWMutex
+	fileInsertionMutex sync.RWMutex
 }
 
 var selfCache Cache = Cache{
-	cachingQueue: []File{},
-	cachingMap:   map[string]File{},
-	mutex:        sync.RWMutex{}}
+	cachingList:        []File{},
+	cachingMap:         map[string]File{},
+	cacheMutex:         sync.RWMutex{},
+	fileInsertionMutex: sync.RWMutex{},
+}
 
 func GetCache() *Cache {
 	return &selfCache
@@ -50,7 +64,7 @@ func (cache *Cache) IsFileInCache(fileName string) bool {
 
 func (cache *Cache) GetFileSize(fileName string) int64 {
 
-	for _, file := range cache.cachingQueue {
+	for _, file := range cache.cachingList {
 		if file.fileName == fileName {
 			return file.fileSize
 		}
@@ -59,39 +73,58 @@ func (cache *Cache) GetFileSize(fileName string) int64 {
 	return -1
 }
 
+//Inserisce un file all'interno della cache
 func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, fileName string, fileSize int64) {
-	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (versioning custom (?) // implementare login e fare un servizio per-user)
+	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (--> implementare login e accodare al nome del file quello dell'utenza)
 
-	file, alreadyExists := cache.cachingMap[fileName]
-	if alreadyExists {
-		// Se esiste già, reinserisci il file in testa alla coda
-		file.popularity++
-		utils.PrintEvent("POPULARITY_INCREMENTED", fmt.Sprintf("La popolarità del File '%s' è salita al valore di '%d'", fileName, file.popularity))
-		//TODO controllare se funziona, altrimenti aggiungere questa riga di codice:
-		// cache.cachingMap[fileName] = file
+	// Se esiste già, incrementa la popolarità del file
+	if cache.incrementPopularity(fileName) {
 		return
 	} else {
 		if IsFileCacheable(fileSize) {
-			cache.freeMemoryForInsert(fileSize)
-			err := writeChunksInCache(redirectionChannel, fileName)
+			// Usiamo un diverso mutex per evitare che tutta la cache sia in blocco in caso di scrittura di un file. L'importante è che non ci siano scritture concorrenti
+			cache.fileInsertionMutex.Lock()
+			defer cache.fileInsertionMutex.Unlock()
+
+			// SEZIONE CRITICA: soltanto un thread per volta può accedere a questa sezione altrimenti potrebbero esserci problemi durante l'eliminazione dei file
+			err := cache.freeSpaceForInsert(fileSize)
+			if err != nil {
+				utils.PrintEvent("CACHE_SPACE_RELEASE_FAILURE", fmt.Sprintf("Errore durante la liberazione dello spazio in cache.\r\nL'errore è '%s'", err.Error()))
+				return
+			}
+			err = writeChunksInCache(redirectionChannel, fileName)
 			if err != nil {
 				utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
 				return
 			}
 			cache.insertFileInQueue(fileName, fileSize, 1)
+			// FINE DELLA SEZIONE CRITICA-------------------------------------------------------------------------------------------------------------------------
 		}
 	}
 }
 
+// Incrementa la popolarità del file se questo esiste in cache. Ritorna true se ha avuto successo, false se il file non esiste.
+func (cache *Cache) incrementPopularity(fileName string) bool {
+	file, alreadyExists := cache.cachingMap[fileName]
+	if alreadyExists {
+		file.popularity++
+		//TODO controllare se funziona, altrimenti aggiungere questa riga di codice:
+		// cache.cachingMap[fileName] = file
+		utils.PrintEvent("POPULARITY_INCREMENTED", fmt.Sprintf("La popolarità del File '%s' è salita al valore di '%d'", fileName, file.popularity))
+		return true
+	}
+	return false
+}
+
 func (cache *Cache) insertFileInQueue(fileName string, fileSize int64, filePopularity int) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
 
 	newFile := File{fileName, fileSize, time.Now(), 1}
 	// Inserimento del file nella mappa
 	cache.cachingMap[fileName] = newFile
 	// Inserimento del file nella coda
-	cache.cachingQueue = append(cache.cachingQueue, newFile)
+	cache.cachingList = append(cache.cachingList, newFile)
 }
 
 func (cache *Cache) RemoveFileFromCache(fileName string) {
@@ -102,6 +135,15 @@ func (cache *Cache) RemoveFileFromCache(fileName string) {
 		return
 	}
 	cache.removeFileFromQueue(fileName)
+}
+
+func (cache *Cache) GetFileForReading(fileName string) (*os.File, error) {
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+	if err != nil {
+		return nil, status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
+	}
+	cache.incrementPopularity(fileName)
+	return localFile, nil
 }
 
 func removeWithLocks(fileName string) error {
@@ -144,7 +186,7 @@ func (cache *Cache) cleanCachePeriodically() {
 }
 
 func (cache *Cache) deleteExpiredFiles() {
-	for _, file := range cache.cachingQueue {
+	for _, file := range cache.cachingList {
 		if file.timestamp.Add(time.Duration(utils.GetInt64EnvironmentVariable("TIME_TO_DELETION"))).After(time.Now()) {
 			cache.RemoveFileFromCache(file.fileName)
 			utils.PrintEvent("FILE_DELETED", fmt.Sprintf("Il File '%s' è stato rimosso dalla cache a seguito della procedura periodica di cleanup.", file.fileName))
@@ -178,8 +220,8 @@ func convertAndPrintCachingMap(cachingMap map[string]File) {
 }
 
 func (cache *Cache) removeFileFromQueue(file_name string) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
 
 	index, err := cache.getIndex(file_name)
 	if err != nil {
@@ -191,22 +233,67 @@ func (cache *Cache) removeFileFromQueue(file_name string) {
 	// Eliminazione file dalla mappa
 	delete(cache.cachingMap, file_name)
 	// Eliminazione file dalla coda
-	cache.cachingQueue = append(cache.cachingQueue[:index], cache.cachingQueue[index+1:]...)
+	cache.cachingList = append(cache.cachingList[:index], cache.cachingList[index+1:]...)
 }
 
-func (cache *Cache) freeMemoryForInsert(file_size int64) {
-	// Se non c'è abbastanza memoria disponibile elimino file fino a quando la memoria non basta
-	//TODO Cambiare la gestione delle eliminazione (evitando di eliminare molti file)(?) -> Si potrebbero analizzare i file migliori da eliminare
-	// piuttosto che eliminare gli ultimi e basta
+//Effettua un controllo sulla necessità di eliminare file dalla cache per liberare uno spazio pari a fileSize.
+//In tal caso elimina file in fondo alla coda di popolarità fino a quando non si libera sufficiente memoria.
+func (cache *Cache) freeSpaceForInsert(fileSize int64) error {
 	cache.deleteExpiredFiles()
+	freeMemory := retrieveFreeMemorySize()
+	if freeMemory < fileSize {
+		utils.PrintEvent("CACHING_QUEUE", fmt.Sprintln(cache.cachingList))
+		sort.Sort(ByPopularity(cache.cachingList))
+		utils.PrintEvent("SORTED_CACHING_QUEUE", fmt.Sprintln(cache.cachingList))
+		return cache.chooseAndDeleteFiles(fileSize - freeMemory)
+	}
+	return nil
+}
 
-	for {
-		if retrieveFreeMemorySize() < file_size {
-			cache.RemoveFileFromCache(cache.cachingQueue[len(cache.cachingQueue)-1].fileName)
-		} else {
+//Analizza i file necessari per liberare abbastanza spazio a partire da quelli a più bassa priorità.
+//Controlla inoltre se tra i file scelti è possibile risparmiarne qualcuno minimizzando il numero di eliminazioni.
+func (cache *Cache) chooseAndDeleteFiles(memoryRequired int64) error {
+	var memoryCount int64 = 0
+	var utilityFilesToDelete []File
+
+	cache.cacheMutex.Lock()
+	defer cache.cacheMutex.Unlock()
+	// SEZIONE CRITICA: Accediamo ai file in cache per eliminarli -------------------------------------
+
+	// Seleziona i file con popolarità più bassa
+	for _, file := range cache.cachingList {
+		memoryCount += file.fileSize
+		utilityFilesToDelete = append(utilityFilesToDelete, file)
+		if memoryCount >= memoryRequired {
 			break
 		}
 	}
+
+	// Se non è stato selezionato alcun file, allora c'è stato un errore.
+	if len(utilityFilesToDelete) == 0 {
+		return fmt.Errorf("impossibile individuare file da eliminare in cache")
+	}
+
+	var index int = len(utilityFilesToDelete) - 1
+	var finalFilesToDelete []File
+
+	// Controlla se è possibile evitare l'eliminazione di qualche file a partire da quelli con popolarità più alta
+	for index > 0 {
+		file := utilityFilesToDelete[index]
+		// Se non eliminando il file non ho più abbastanza memoria, allora lo inserisco nei file da eliminare
+		if memoryCount-file.fileSize < memoryRequired {
+			finalFilesToDelete = append(finalFilesToDelete, file)
+		}
+
+		index--
+	}
+
+	// Eliminazione dei file
+	for _, file := range finalFilesToDelete {
+		cache.RemoveFileFromCache(file.fileName)
+	}
+	return nil
+	// FINE DELLA SEZIONE CRITICA ---------------------------------------------------------------------
 }
 
 func retrieveFreeMemorySize() int64 {
@@ -219,6 +306,8 @@ func retrieveFreeMemorySize() int64 {
 	return int64(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
+//Controlla se il file è adatto per essere inserito all'interno della cache.
+//In particolare controlla se la dimensione è positiva e non superi un limite impostato nei parametri di configurazione.
 func IsFileCacheable(file_size int64) bool {
 	max_size := utils.GetInt64EnvironmentVariable("MAX_CACHABLE_FILE_SIZE")
 	if file_size > 0 && file_size <= max_size {
@@ -240,7 +329,7 @@ func (cache *Cache) getIndex(file_name string) (int, error) {
 	if !alreadyExists {
 		return -1, nil
 	}
-	for i, file := range cache.cachingQueue {
+	for i, file := range cache.cachingList {
 		if file.fileName == file_name {
 			return i, nil
 		}
@@ -248,14 +337,15 @@ func (cache *Cache) getIndex(file_name string) (int, error) {
 	return -1, errors.New("c'è inconsistenza tra la coda e la mappa della cache. Potrebbe essere dovuto ad accessi concorrenti non gestiti?")
 }
 
+// Calcola il filtro di bloom dei file in cache e lo restituisce.
 func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
-	cache.mutex.RLock()
-	defer cache.mutex.RUnlock()
+	cache.cacheMutex.RLock()
+	defer cache.cacheMutex.RUnlock()
 
 	newFilter := bloom.NewDefaultStableBloomFilter(
 		utils.GetUintEnvironmentVariable("FILTER_N"),
 		utils.GetFloatEnvironmentVariable("FALSE_POSITIVE_RATE"))
-	for _, file := range cache.cachingQueue {
+	for _, file := range cache.cachingList {
 		newFilter.Add([]byte(file.fileName))
 	}
 

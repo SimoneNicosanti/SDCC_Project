@@ -52,16 +52,24 @@ func (uploadStream *UploadStream) Read(dest []byte) (bytesInDest int, err error)
 }
 
 func (downloadStream *DownloadStream) WriteAt(source []byte, off int64) (bytesSent int, err error) {
-	//TODO aggiungere controllo sui canali di errore dei riceventi
-	//TODO (se c'è errore -> stop se è sul canale principale altrimenti smetti di inviare sulla cache e bassta)
+	select {
+	case err := <-downloadStream.ClientChannel.ReturnChannel:
+		return 0, err
+	case <-downloadStream.CacheChannel.ReturnChannel:
+		downloadStream.IsFileCacheable = false
+	default:
+		break
+	}
+	return downloadStream.writeAndRedirect(source)
+}
 
-	// Se il Concurrency del Downloader è impostato ad 1 non serve usare l'offset
+func (downloadStream *DownloadStream) writeAndRedirect(source []byte) (int, error) {
 	clientCopy := make([]byte, len(source))
 	copy(clientCopy, source)
 	downloadStream.ClientChannel.MessageChannel <- channels.Message{Body: clientCopy, Err: nil}
 
 	if downloadStream.IsFileCacheable {
-		//log.Printf("[*] -> Loaded Chunk of size %d\n", len(p))
+
 		cacheCopy := make([]byte, len(source))
 		copy(cacheCopy, source)
 		downloadStream.CacheChannel.MessageChannel <- channels.Message{Body: cacheCopy, Err: nil}

@@ -49,7 +49,7 @@ services:
       - sdcc_network
     volumes:
       - type: tmpfs
-        target: /temp_storage
+        target: /files
         tmpfs:
           size: 100M   ## Va per pagine di memoria principale (4k)
       - ./edge:/src
@@ -61,7 +61,7 @@ services:
       resources:
         limits: # Hard Limit
           cpus: '1'
-          memory: 1.5G
+          memory: 2G
         # reservations: # Soft Limit
         #   cpus: 0.25
         #   memory: 128M

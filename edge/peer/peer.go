@@ -198,7 +198,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	doneChannel := make(chan *rpc.Call, maxContactable)
-	defer close(doneChannel)
+
 	contactedNum := 0
 
 	// Contattiamo solo i vicini positivi ai filtri (tranne il mittente originario)
@@ -236,18 +236,25 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 		}
 	}
 
-	// Ritorniamo il canale anziché il primo che risponde?: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
-	for i := 0; i < contactedNum; i++ {
-		neighbourCall := <-doneChannel
-		err := neighbourCall.Error
-		fileLookupResponsePtr := neighbourCall.Reply.(*FileLookupResponse)
-		if err == nil {
-			utils.PrintEvent("LOOKUP_RESPONSE_OK", "Riscontro positivo da "+fileLookupResponsePtr.OwnerEdge.IpAddr)
-			return *fileLookupResponsePtr, nil
-		}
-	}
-	return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+	timer := time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE")))
 
+	//TODO Ritorniamo il canale anziché il primo che risponde?: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
+	for i := 0; i < contactedNum; i++ {
+		select {
+		case neighbourCall := <-doneChannel:
+			err := neighbourCall.Error
+			fileLookupResponsePtr := neighbourCall.Reply.(*FileLookupResponse)
+			if err == nil {
+				utils.PrintEvent("LOOKUP_RESPONSE_OK", "Riscontro positivo da "+fileLookupResponsePtr.OwnerEdge.IpAddr)
+				return *fileLookupResponsePtr, nil
+			}
+		case <-timer:
+			return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
+		}
+
+	}
+
+	return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 }
 
 func findFalseAdjacentsFilter(fileName string) []EdgePeer {
@@ -264,17 +271,7 @@ func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer
 	if adj != fileRequestMessage.SenderPeer {
 		fileLookupResponsePtr := new(FileLookupResponse)
 		adjConn := adjacentsMap.peerConns[adj]
-
-		call := adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
-		select {
-		case <-call.Done:
-			if call.Error != nil {
-				return false
-			}
-		case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
-			return false
-		}
-
+		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
 		return true
 	}
 	return false

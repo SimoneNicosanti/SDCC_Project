@@ -19,4 +19,4 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 #============#
 # FileSystem #
 #============#
-RUN mkdir /files
+## Aggiungere file per prepopolare le cache?

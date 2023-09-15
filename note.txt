@@ -10,12 +10,12 @@ RAGIONIAMO
 6] meccanismo heartbeat al registry --> OK
 7] meccanismo ping edge-edge --> OK
 8] build graph periodico da parte del registry (pull sulle info sui neighbours + calcolo componenti connesse ed eventuale unificazione) --> OK
-9] timer sulle chiamate goRPC (evitiamo freeze della rete se succede qualcosa su un edge) --> OK(vedere se serve anche altrove)
-10] meccanismo di caching time based + threshold sulla dimensione dei file --> POPOLARITA' SAREBBE MEGLIO --> raffinare meccanismo (?) --> qualcosa in-memory ?
+9] timer sulle chiamate goRPC (evitiamo freeze della rete se succede qualcosa su un edge) --> OK
+10] meccanismo di caching in memory (tmpfs da 100MB) popularity based + threshold sulla dimensione dei file --> OK
 11] DOMINIO DI APPLICAZIONE (necessità, caratteristiche, richieste su prestazioni/risorse etc etc...) --> DECIDETE VOI --> IoT devices in same organization / Global storage service (algoritmo vivaldi)
 12] quali sono le risorse limitate e come limitarle --> TUTTE QUELLE POSSIBILI (raspberryPI systems)
     -bisogna limitare:
-        > CPU / MEMORIA / DISCO --> cpu e memoria con docker || disco (creare partizione disco nel dockerfile e limitarne la memoria)
+        > CPU / MEMORIA --> cpu e memoria con docker 
         > connessioni(numero di vicini / client serviti) --> abbiamo introdotto token / vedere se si può limitare il numero di connessioni direttamente su rpc
         > thread? --> Problema per thread che gestiscono le richieste dei client o degli altri edge (legato al numero di )
 13] ricerca file hop by hop con caching oppure callback (e nel caso come?) --> BOH, VEDETE VOI
@@ -34,10 +34,12 @@ RAGIONIAMO
 ============================================
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
-1] raffinare meccanismi di cache (eliminazione più efficiente / pensare alla popolarità / qualcosa in-memory(?))
-2] limitare risorse come descritto sopra
-3] ricerca file con callback
-4] implementare procedura di login e gestione
+1] ricerca file con callback
+2] implementare procedura di login e gestione su nome file
 
-N-1] testing come descritto sopra
+N-1] testing
+        test rispetto a situazione di base (solo cloud)
+        test molte get / test intermedio / test molte put (box plot su tempi di risposta)
+        test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
+        come i parametri di configurazione influenzano le prestazioni
 N] inventare storiella per presentare
