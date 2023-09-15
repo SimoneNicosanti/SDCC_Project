@@ -1,8 +1,8 @@
 package cache
 
 import (
-	"edge/channels"
 	"edge/proto/client"
+	"edge/redirection_channel"
 	"edge/utils"
 	"errors"
 	"fmt"
@@ -74,7 +74,7 @@ func (cache *Cache) GetFileSize(fileName string) int64 {
 }
 
 //Inserisce un file all'interno della cache
-func (cache *Cache) InsertFileInCache(redirectionChannel channels.RedirectionChannel, fileName string, fileSize int64) {
+func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.RedirectionChannel, fileName string, fileSize int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (--> implementare login e accodare al nome del file quello dell'utenza)
 
 	// Se esiste già, incrementa la popolarità del file
@@ -352,7 +352,7 @@ func (cache *Cache) ComputeBloomFilter() *bloom.StableBloomFilter {
 	return newFilter
 }
 
-func writeChunksInCache(redirectionChannel channels.RedirectionChannel, fileName string) error {
+func writeChunksInCache(redirectionChannel redirection_channel.RedirectionChannel, fileName string) error {
 	utils.PrintEvent("CACHE_WRITE_INIT", "La procedura di scrittura sulla cache è iniziata.")
 	var localFile *os.File
 	var fileCreated bool = false

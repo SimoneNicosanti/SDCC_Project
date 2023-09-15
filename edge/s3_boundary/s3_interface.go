@@ -1,7 +1,7 @@
 package s3_boundary
 
 import (
-	"edge/channels"
+	"edge/redirection_channel"
 	"edge/utils"
 	"fmt"
 
@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
+func SendToS3(fileName string, redirectionChannel redirection_channel.RedirectionChannel) {
 	uploadStreamReader := UploadStream{RedirectionChannel: redirectionChannel, ResidualChunk: make([]byte, 0)}
 	defer close(redirectionChannel.ReturnChannel)
 
@@ -30,7 +30,7 @@ func SendToS3(fileName string, redirectionChannel channels.RedirectionChannel) {
 
 }
 
-func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionChannel, cacheRedirectionChannel channels.RedirectionChannel, isFileCachable bool) error {
+func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel, cacheRedirectionChannel redirection_channel.RedirectionChannel, isFileCachable bool) error {
 	// 1] Open connection to S3
 	// 2] retrieve chunk by chunk (send to client + save in local)
 	downloadStreamWriter := DownloadStream{ClientChannel: clientRedirectionChannel, CacheChannel: cacheRedirectionChannel, IsFileCacheable: isFileCachable}
@@ -57,9 +57,9 @@ func SendFromS3(fileName string, clientRedirectionChannel channels.RedirectionCh
 	)
 	if err != nil {
 		customErr := fmt.Errorf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error())
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCachable {
-			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		}
 		return err
 	}

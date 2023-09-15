@@ -2,15 +2,17 @@ package server
 
 import (
 	"edge/cache"
-	"edge/channels"
+	"edge/lookup_server"
 	"edge/peer"
 	"edge/proto/client"
+	"edge/redirection_channel"
 	"edge/s3_boundary"
 	"edge/utils"
 	"fmt"
 	"io"
 	"strconv"
 	"syscall"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -36,8 +38,8 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	defer publishNewTicket(isValidRequest)
 
 	// Salvo prima su S3 e poi su file locale
-	s3RedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
-	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
+	s3RedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
+	cacheRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
 
 	// Ridirezione del flusso sulla cache
 	isFileCacheable := cache.IsFileCacheable(fileSize)
@@ -124,8 +126,8 @@ func redirectFromS3(fileName string, downloadStream client.FileService_DownloadS
 		isFileCachable = cache.IsFileCacheable(fileSize)
 	}
 
-	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
-	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	clientRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	cacheRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 
 	if isFileCachable {
 		go cache.GetCache().InsertFileInCache(cacheRedirectionChannel, fileName, fileSize)
@@ -139,8 +141,19 @@ func redirectFromS3(fileName string, downloadStream client.FileService_DownloadS
 }
 
 func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileLookupResponse, error) {
-	fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer}
-	lookupReponse, err := peer.NeighboursFileLookup(fileRequest)
+	lookup_server := lookup_server.CreateLookupServer()
+	fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer, CallbackServer: lookup_server.UdpAddr}
+	peer.NeighboursFileLookup(fileRequest)
+
+	callbackChannel := make(chan *peer.FileLookupResponse, 1280)
+	go lookup_server.ReadFromServer(callbackChannel)
+
+	timer := time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE")))
+	select {
+	case response <- callbackChannel:
+
+	case <-timer:
+	}
 
 	if err != nil {
 		return peer.FileLookupResponse{}, err
@@ -152,8 +165,8 @@ func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, 
 	utils.PrintEvent("FILE_IN_NETWORK", fmt.Sprintf("Il file '%s' è stato trovato nell'edge %s", fileName, lookupResponse.OwnerEdge.IpAddr))
 	// 1] Open gRPC connection to ownerEdge
 	// 2] retrieve chunk by chunk (send to client + save in local)
-	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
-	cacheRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	clientRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	cacheRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 
 	isFileCachable := cache.IsFileCacheable(lookupResponse.FileSize)
 	if isFileCachable {
@@ -165,7 +178,7 @@ func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, 
 	return redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
 }
 
-func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, cacheRedirectionChannel channels.RedirectionChannel, clientRedirectionChannel channels.RedirectionChannel, isFileCacheable bool) {
+func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, cacheRedirectionChannel redirection_channel.RedirectionChannel, clientRedirectionChannel redirection_channel.RedirectionChannel, isFileCacheable bool) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE"))),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -174,9 +187,9 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
 		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		}
 		return
 	}
@@ -185,9 +198,9 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{TicketId: "", FileName: fileName})
 	if err != nil {
 		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		}
 		return
 	}
@@ -196,22 +209,22 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	err = edgeDownloadStream.CloseSend()
 	if err != nil {
 		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere downloadstream.\r\nError: '%s'", err.Error()))
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
-			cacheRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: customErr}
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		}
 	}
 }
 
 // Invia il file al client direttamente dalla cache locale
 func sendFromLocalCache(fileName string, clientDownloadStream client.FileService_DownloadServer) error {
-	clientRedirectionChannel := channels.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
+	clientRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 	go readFromLocalCache(fileName, clientRedirectionChannel)
 	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
 	return nil
 }
 
-func readFromLocalCache(fileName string, clientRedirectionChannel channels.RedirectionChannel) {
+func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
 	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
 	localFile, err := cache.GetCache().GetFileForReading(fileName)
 	if err != nil {
@@ -232,8 +245,8 @@ func readFromLocalCache(fileName string, clientRedirectionChannel channels.Redir
 			break
 		}
 		if err != nil {
-			clientRedirectionChannel.MessageChannel <- channels.Message{Body: []byte{}, Err: status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
+			clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
 		}
-		clientRedirectionChannel.MessageChannel <- channels.Message{Body: buffer[:bytesRead], Err: nil}
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: buffer[:bytesRead], Err: nil}
 	}
 }

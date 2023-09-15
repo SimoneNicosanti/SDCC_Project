@@ -1,4 +1,4 @@
-package channels
+package redirection_channel
 
 type Message struct {
 	Body []byte

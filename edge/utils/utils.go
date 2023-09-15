@@ -7,12 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	math_rand "math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func ExitOnError(errorMessage string, err error) {
@@ -104,18 +102,6 @@ func isPortAvailable(port int) bool {
 	}
 	defer lis.Close()
 	return true
-}
-
-func GetRandomPort() int {
-	math_rand.Seed(time.Now().UnixNano())
-	minPort := 50000
-	maxPort := 60000
-	for {
-		port := math_rand.Intn(maxPort-minPort+1) + minPort
-		if isPortAvailable(port) {
-			return port
-		}
-	}
 }
 
 func GetMyIPAddr() (string, error) {

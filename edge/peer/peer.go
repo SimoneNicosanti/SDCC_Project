@@ -22,12 +22,8 @@ var peerFileServer PeerFileServer
 var registryClient *rpc.Client
 
 func ActAsPeer() {
-	// bloomFilter := boom.NewDefaultStableBloomFilter(10000, 0.01)
-	// fmt.Println(bloomFilter)
 	ipAddr, err := utils.GetMyIPAddr()
 	utils.ExitOnError("", err)
-
-	//setupBloomFilterStruct()
 
 	//Registrazione del servizio e lancio di un thread in ascolto
 	edgePeerPtr := new(EdgePeer)
@@ -42,7 +38,7 @@ func ActAsPeer() {
 	registryClientPtr, err := registerToRegistry(edgePeerPtr, adj)
 	registryClient = registryClientPtr
 
-	utils.ExitOnError(fmt.Sprintf("[*ERROR*] -> Impossibile registrare il servizio sul registry server: '%s'", err.Error()), err)
+	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server", err)
 	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
 	stringAdjMap := make(map[string]byte)
 	for peer := range *adj {
@@ -67,20 +63,20 @@ func registerGRPC() {
 	ipAddr, err := utils.GetMyIPAddr()
 	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
 
-	serverEndpoint := fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
+	serverEndpoint := ipAddr + ":0"
 	lis, err := net.Listen("tcp", serverEndpoint)
+	//Otteniamo l'indirizzo usato
+	serverEndpoint = lis.Addr().String()
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
-	//peerFileServer.IpAddr = serverEndpoint
 
 	opts := []grpc.ServerOption{
-		//grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 		grpc.MaxSendMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	peerFileServer = PeerFileServer{IpAddr: serverEndpoint}
 	grpcServer := grpc.NewServer(opts...)
 	client.RegisterEdgeFileServiceServer(grpcServer, &peerFileServer)
 
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Server Endpoint : "+SelfPeer.PeerAddr)
+	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in peer with endpoint : "+SelfPeer.PeerAddr)
 	go grpcServer.Serve(lis)
 }
 
@@ -187,7 +183,7 @@ func notifyBloomFiltersToAdjacents() error {
 	return nil
 }
 
-func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResponse, error) {
+func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
@@ -197,7 +193,6 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 	fileRequestMessage.ForwarderPeer = SelfPeer
 
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
-	doneChannel := make(chan *rpc.Call, maxContactable)
 
 	contactedNum := 0
 
@@ -206,7 +201,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
 			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
-				contacted := contactNeighbourForFile(fileRequestMessage, adj, doneChannel)
+				contacted := contactNeighbourForFile(fileRequestMessage, adj, nil)
 				if contacted {
 					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr+" per filtro di Bloom")
 					contactedNum++
@@ -227,7 +222,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 			}
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh, doneChannel)
+			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh, nil)
 			if contacted {
 				utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr+" per complemento")
 				contactedNum++
@@ -235,26 +230,6 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) (FileLookupResp
 			falseFiltersNeighbours = append(falseFiltersNeighbours[0:randomInt], falseFiltersNeighbours[randomInt+1:]...)
 		}
 	}
-
-	timer := time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE")))
-
-	//TODO Ritorniamo il canale anziché il primo che risponde?: quello che risponde potrebbe aver tolto il file dalla cache nel mentre
-	for i := 0; i < contactedNum; i++ {
-		select {
-		case neighbourCall := <-doneChannel:
-			err := neighbourCall.Error
-			fileLookupResponsePtr := neighbourCall.Reply.(*FileLookupResponse)
-			if err == nil {
-				utils.PrintEvent("LOOKUP_RESPONSE_OK", "Riscontro positivo da "+fileLookupResponsePtr.OwnerEdge.IpAddr)
-				return *fileLookupResponsePtr, nil
-			}
-		case <-timer:
-			return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
-		}
-
-	}
-
-	return FileLookupResponse{}, fmt.Errorf("[*LOOKUP_ERROR*] -> No Neighbour Answered Successfully to Lookup for file %s", fileRequestMessage.FileName)
 }
 
 func findFalseAdjacentsFilter(fileName string) []EdgePeer {

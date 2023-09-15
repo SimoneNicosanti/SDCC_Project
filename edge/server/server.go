@@ -113,14 +113,18 @@ func ActAsServer() {
 func setUpGRPC() {
 	ipAddr, err := utils.GetMyIPAddr()
 	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
-	serverEndpoint = fmt.Sprintf("%s:%d", ipAddr, utils.GetRandomPort())
+	serverEndpoint := ipAddr + ":0"
 	lis, err := net.Listen("tcp", serverEndpoint)
+	utils.ExitOnError("[*ERROR*] -> failed to listen on endpoint", err)
+	//Otteniamo l'indirizzo usato
+	serverEndpoint = lis.Addr().String()
+	utils.PrintEvent("ADDRESS_GENERATED", serverEndpoint)
 	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Server Endpoint : "+serverEndpoint)
+	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+serverEndpoint)
 	go grpcServer.Serve(lis)
 }

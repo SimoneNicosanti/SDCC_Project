@@ -18,7 +18,7 @@ RAGIONIAMO
         > CPU / MEMORIA --> cpu e memoria con docker 
         > connessioni(numero di vicini / client serviti) --> abbiamo introdotto token / vedere se si può limitare il numero di connessioni direttamente su rpc
         > thread? --> Problema per thread che gestiscono le richieste dei client o degli altri edge (legato al numero di )
-13] ricerca file hop by hop con caching oppure callback (e nel caso come?) --> BOH, VEDETE VOI
+13] ricerca file hop by hop senza caching --> OK, se locale
 14] consistenza in generale + come gestire la cancellazione "distribuita" di un file: (NB: stabilire il livello di consistenza che si vuole raggiungere)
         IDEA: countdown_to_deletion su singolo file --> consistenza finale / nessuno scambio / unico costo è quello eventualmente di riaggiungerlo se fosse popolare (aiuta anche a resettare la popolarità)
 15] timestamp su file / username con login / ibrido (pubblico/privato) --> a seconda delle assunzioni
@@ -34,8 +34,7 @@ RAGIONIAMO
 ============================================
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
-1] ricerca file con callback
-2] implementare procedura di login e gestione su nome file
+x] implementare procedura di login e gestione su nome file
 
 N-1] testing
         test rispetto a situazione di base (solo cloud)

@@ -34,11 +34,12 @@ type BloomFilterMessage struct {
 }
 
 type FileRequestMessage struct {
-	FileName      string
-	TTL           int
-	SenderPeer    EdgePeer
-	TicketId      string
-	ForwarderPeer EdgePeer
+	FileName       string
+	TTL            int
+	SenderPeer     EdgePeer
+	TicketId       string
+	ForwarderPeer  EdgePeer
+	CallbackServer string
 }
 
 // Attenzione alla gestione dei Mutex
