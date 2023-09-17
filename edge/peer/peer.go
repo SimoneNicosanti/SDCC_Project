@@ -184,7 +184,6 @@ func notifyBloomFiltersToAdjacents() error {
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
-	utils.PrintEvent("LOOKUP_STARTED", "Contattando qualche vicino...")
 
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()

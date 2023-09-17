@@ -1,9 +1,8 @@
 package peer
 
 import (
-	"bytes"
 	"edge/utils"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"net"
 )
@@ -87,41 +86,33 @@ func (lookupServer *LookupServer) readFromChannel() (*FileLookupResponse, error)
 	// Leggi i dati dal datagramma UDP
 	buffer := make([]byte, 128)
 	n, _, err := lookupServer.conn.ReadFromUDP(buffer)
-	utils.PrintEvent("RESPONSE_RECEIVED", fmt.Sprintf("Ricevuta un risposta dalla lookup"))
 	if err != nil && !lookupServer.closed {
 		utils.PrintEvent("LOOKUP_RCV_ERROR", fmt.Sprintf("Errore durante la lettura dei dati UDP: '%s'", err))
 		return nil, err
 	} else if err != nil && lookupServer.closed {
 		return nil, nil
 	}
+	jsonData := buffer[:n]
 
-	gobData := buffer[:n]
-	reader := bytes.NewReader(gobData)
-
-	// Crea un decoder
-	decoder := gob.NewDecoder(reader)
-	lookupResponse := new(FileLookupResponse)
-	err = decoder.Decode(lookupResponse)
+	lookupResponsePtr := new(FileLookupResponse)
+	err = json.Unmarshal(jsonData, lookupResponsePtr)
 	if err != nil {
-		utils.PrintEvent("LOOKUP_DECODE_ERROR", fmt.Sprintf("Errore durante la decodifica dei dati UDP: '%s'", err)) //TODO ******************
+		utils.PrintEvent("LOOKUP_UNMARSHAL_ERROR", fmt.Sprintf("Errore durante l'unmarshal dei dati UDP: '%s'", err))
 		return nil, err
 	}
-	//fmt.Printf("Dati ricevuti da %s: %s\n", addr, datiRicevuti)
-	return lookupResponse, nil
+	return lookupResponsePtr, nil
 }
 
 // Invio di LookupResponse al server di callback contattato
 func (lookupServer *LookupServer) SendToServer(fileLookupResponse FileLookupResponse) error {
-	gobData := make([]byte, 128)
-	writer := bytes.NewBuffer(gobData)
 
-	gobEncoder := gob.NewEncoder(writer)
-	err := gobEncoder.Encode(fileLookupResponse)
+	jsonData, err := json.Marshal(fileLookupResponse)
 	if err != nil {
-		utils.PrintEvent("LOOKUP_ENCODE_ERROR", "Errore durante la codifica dei dati UDP")
+		utils.PrintEvent("LOOKUP_MARSHAL_ERROR", "Errore durante la codifica dei dati UDP")
 		return err
 	}
-	_, err = lookupServer.conn.Write(gobData)
+
+	_, err = lookupServer.conn.Write(jsonData)
 	if err != nil {
 		utils.PrintEvent("LOOKUP_SEND_ERROR", "Errore durante l'invio dei dati UDP")
 		return err
