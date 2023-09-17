@@ -1,8 +1,8 @@
 package server
 
 import (
+	"context"
 	"edge/cache"
-	"edge/lookup_server"
 	"edge/peer"
 	"edge/proto/client"
 	"edge/redirection_channel"
@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -81,7 +79,7 @@ func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, str
 	return ticketID, file_name, file_size, false, nil
 }
 
-// TODO impostare un timer (sulla lookup) dopo il quale assumo che il file non sia stato trovato --> limito l'attesa
+// Permette al client di effettuare una richiesta di get con successo
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.TicketId))
 	isValidRequest := checkTicket(requestMessage.TicketId)
@@ -90,30 +88,55 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 	}
 	defer publishNewTicket(isValidRequest)
 
-	if !cache.GetCache().IsFileInCache(requestMessage.FileName) {
+	if cache.GetCache().IsFileInCache(requestMessage.FileName) {
+		// ce l'ha l'edge corrente --> Leggi file e invia chunk
+		return sendFromLocalCache(requestMessage.FileName, downloadStream)
+	} else {
 		// Thread in attesa di ricevere il file durante l'invio ad S3 in modo da salvarlo localmente
-		lookupReponse, err := lookupFileInNetwork(requestMessage)
-		var askS3 bool = true
-		if err == nil { // ce l'ha ownerEdge --> Ricevi file come stream e invia chunk (+ salva in locale)
-			err = sendFromOtherEdge(lookupReponse, requestMessage.FileName, downloadStream)
-			if err != nil {
-				utils.PrintEvent("OTHEREDGE_DOWNLOAD_ERROR", fmt.Sprintf("Impossibile recuperare file '%s' da altro edge... Ripiego su S3\r\nError: '%s'", requestMessage.FileName, err.Error()))
-			} else {
-				askS3 = false
-			}
+		lookupServer, err := peer.CreateLookupServer()
+
+		if err != nil {
+			utils.PrintEvent("LOOKUP_SERVER_ERROR", "Impossibile creare il lookup server")
+			return err
 		}
-		if askS3 { // ce l'ha S3 --> Ricevi file come stream e invia chunk (+ salva in locale)
+		callbackChannel := lookupFileInNetwork(lookupServer, requestMessage)
+
+		// potrebbe averlo qualche edge --> attendi risposte alla lookup
+		var askS3 bool = !tryToSendFromOtherEdge(callbackChannel, requestMessage, downloadStream)
+		//lookupServer.CloseServer()
+
+		if askS3 { // nessun edge contattato ha il file --> Contatta S3: Ricevi file come stream e invia chunk (+ salva in locale)
 			err := redirectFromS3(requestMessage.FileName, downloadStream)
 			if err != nil {
 				utils.PrintEvent("S3_DOWNLOAD_ERROR", err.Error())
 				return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Impossibile recuperare il file '%s' dal bucket specificato.\r\nError: '%s'", requestMessage.FileName, err.Error()))
 			}
 		}
-	} else { // ce l'ha l'edge corrente --> Leggi file e invia chunk
-		return sendFromLocalCache(requestMessage.FileName, downloadStream)
 	}
 	utils.PrintEvent("DOWNLOAD_SUCCESS", fmt.Sprintf("Invio del file '%s' Completata", requestMessage.FileName))
 	return nil
+}
+
+// Attendi risposte sul callback channel e, se ricevute, prova a richiedere il file all'edge. Ritorna true se siamo riusciti ad inviare il file da un altro edge; false altrimenti.
+func tryToSendFromOtherEdge(callbackChannel chan *peer.FileLookupResponse, requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) bool {
+	timer := time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE")))
+
+	for {
+		select {
+		case lookupReponse := <-callbackChannel: // ce l'ha ownerEdge --> Contatta l'edge che ti ha risposto, ricevi file come stream e invia chunk (+ salva in locale)
+			err := sendFromOtherEdge(*lookupReponse, requestMessage.FileName, downloadStream)
+			if err == nil {
+				// Se il download del file da un altro edge è andato a buon fine, non contattare S3 e smetti di aspettare ulteriori risposte
+				utils.PrintEvent("OTHEREDGE_DOWNLOAD_SUCCESS", fmt.Sprintf("Inviato il file '%s' da un altro edge.", requestMessage.FileName))
+				return true
+			} else {
+				utils.PrintEvent("OTHEREDGE_DOWNLOAD_ERROR", fmt.Sprintf("Impossibile recuperare file '%s' da altro edge... Ripiego su S3\r\nError: '%s'", requestMessage.FileName, err.Error()))
+			}
+		case <-timer:
+			utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Timeout nell'attesa per la ricerca del file '%s'. Nessuno ha risposto, ripiego su S3", requestMessage.FileName))
+			return false
+		}
+	}
 }
 
 func redirectFromS3(fileName string, downloadStream client.FileService_DownloadServer) error {
@@ -140,25 +163,21 @@ func redirectFromS3(fileName string, downloadStream client.FileService_DownloadS
 	return err
 }
 
-func lookupFileInNetwork(requestMessage *client.FileDownloadRequest) (peer.FileLookupResponse, error) {
-	lookup_server := lookup_server.CreateLookupServer()
-	fileRequest := peer.FileRequestMessage{FileName: requestMessage.FileName, TTL: utils.GetIntEnvironmentVariable("REQUEST_TTL"), TicketId: requestMessage.TicketId, SenderPeer: peer.SelfPeer, CallbackServer: lookup_server.UdpAddr}
+// Invia richieste di lookup ad alcuni dei tuoi vicini. Ritorna un channel dal quale possono essere lette le risposte alla file lookup.
+func lookupFileInNetwork(lookupServer *peer.LookupServer, requestMessage *client.FileDownloadRequest) chan *peer.FileLookupResponse {
+
+	fileRequest := peer.FileRequestMessage{
+		FileName:       requestMessage.FileName,
+		TTL:            utils.GetIntEnvironmentVariable("REQUEST_TTL"),
+		TicketId:       requestMessage.TicketId,
+		SenderPeer:     peer.SelfPeer,
+		CallbackServer: lookupServer.UdpAddr}
 	peer.NeighboursFileLookup(fileRequest)
 
-	callbackChannel := make(chan *peer.FileLookupResponse, 1280)
-	go lookup_server.ReadFromServer(callbackChannel)
+	callbackChannel := make(chan *peer.FileLookupResponse, 10)
+	go lookupServer.ReadFromServer(callbackChannel)
 
-	timer := time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE")))
-	select {
-	case response <- callbackChannel:
-
-	case <-timer:
-	}
-
-	if err != nil {
-		return peer.FileLookupResponse{}, err
-	}
-	return lookupReponse, nil
+	return callbackChannel
 }
 
 func sendFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName string, clientDownloadStream client.FileService_DownloadServer) error {
@@ -224,6 +243,7 @@ func sendFromLocalCache(fileName string, clientDownloadStream client.FileService
 	return nil
 }
 
+// Recupera il file dalla cache locale e ne legge i chunk inviandoli sul canale dato in input
 func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
 	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
 	localFile, err := cache.GetCache().GetFileForReading(fileName)

@@ -184,6 +184,8 @@ func notifyBloomFiltersToAdjacents() error {
 }
 
 func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
+	utils.PrintEvent("LOOKUP_STARTED", "Contattando qualche vicino...")
+
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
 
@@ -193,7 +195,6 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 	fileRequestMessage.ForwarderPeer = SelfPeer
 
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
-
 	contactedNum := 0
 
 	// Contattiamo solo i vicini positivi ai filtri (tranne il mittente originario)
@@ -201,7 +202,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
 			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
-				contacted := contactNeighbourForFile(fileRequestMessage, adj, nil)
+				contacted := contactNeighbourForFile(fileRequestMessage, adj)
 				if contacted {
 					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr+" per filtro di Bloom")
 					contactedNum++
@@ -222,7 +223,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 			}
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh, nil)
+			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh)
 			if contacted {
 				utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr+" per complemento")
 				contactedNum++
@@ -242,11 +243,10 @@ func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 	return falseAdjacentsList
 }
 
-func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer, doneChannel chan *rpc.Call) bool {
+func contactNeighbourForFile(fileRequestMessage FileRequestMessage, adj EdgePeer) bool {
 	if adj != fileRequestMessage.SenderPeer {
-		fileLookupResponsePtr := new(FileLookupResponse)
 		adjConn := adjacentsMap.peerConns[adj]
-		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, fileLookupResponsePtr, doneChannel)
+		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, new(int), nil)
 		return true
 	}
 	return false

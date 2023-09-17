@@ -86,7 +86,7 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 	return nil
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *FileLookupResponse) error {
+func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *int) error {
 	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 	if checkServedRequest(fileRequestMessage) {
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.TicketId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
@@ -96,20 +96,32 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
 			utils.PrintEvent("LOOKUP_CONTINUE", fmt.Sprintf("Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad eventuali vicini", fileRequestMessage.FileName))
-			neighbourResponse, err := NeighboursFileLookup(fileRequestMessage)
-			if err != nil {
-				return err
-			}
-			*returnPtr = neighbourResponse
+			NeighboursFileLookup(fileRequestMessage)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
 			utils.PrintEvent("LOOKUP_END", fmt.Sprintf("Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName))
 			return fmt.Errorf("[*LOOKUP_END*] -> Il File richiesto non è stato trovato")
 		}
 	} else { //file FOUND in local memory --> i have it! ;)
+		utils.PrintEvent("LOOKUP_HIT", fmt.Sprintf("Il File '%s' è stato trovato in memoria", fileRequestMessage.FileName))
+		callbackServer, err := ConnectToLookupServer(fileRequestMessage.CallbackServer)
+		if err != nil {
+			utils.PrintEvent("LOOKUP_ERR", "Impossibile connettersi al server di callback")
+			return err
+		}
+		defer callbackServer.CloseServer()
+
 		file_size := cache.GetCache().GetFileSize(fileRequestMessage.FileName)
-		*returnPtr = FileLookupResponse{peerFileServer, file_size}
+		lookupResponse := FileLookupResponse{peerFileServer, file_size}
+		err = callbackServer.SendToServer(lookupResponse)
+		if err != nil {
+			utils.PrintEvent("LOOKUP_ERROR", "Errore invio risposta al server di callback")
+			return err
+		}
+		utils.PrintEvent("LOOKUP_RESPONSE", fmt.Sprintf("Risposta per il File '%s' inviata", fileRequestMessage.FileName))
+
 	}
+	*returnPtr = 0
 	return nil
 }
 
