@@ -35,10 +35,14 @@ RAGIONIAMO
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
 x] implementare procedura di login e gestione su nome file
+        --> creare load balancer custom da sostituire a RabbitMQ
+                -logica token sostiuita con una mappa Edge/#connessioni
+        --> creare database chiave valore REDIS per gestire le utenze
+        --> accodare nome utente al nome del file nella put (nella get richiedere utenza da cui prendere il file)
 
 N-1] testing
         test rispetto a situazione di base (solo cloud)
         test molte get / test intermedio / test molte put (box plot su tempi di risposta)
         test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
         come i parametri di configurazione influenzano le prestazioni
-N] inventare storiella per presentare
+N] inventare storiella per presentare (sistema di sensori IoT (?))

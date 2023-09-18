@@ -28,18 +28,20 @@ services:
       - ./registry:/src
     working_dir : /src
     
-  login:
+  load_balancer:
     build: 
-      dockerfile: ./docker/login.dockerfile
+      dockerfile: ./docker/load_balancer.dockerfile
     tty: true
     stdin_open: true
     networks:
       - sdcc_network
+    ports:
+      - "6379:6379"
     volumes:
-      - ./login:/src
-      - ./proto/login:/proto
+      - ./load_balancer:/src
+      - ./proto/load_balancer:/proto
     working_dir : /src
-
+    
   edge:
     build:
       dockerfile: ./docker/edge.dockerfile

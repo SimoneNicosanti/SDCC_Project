@@ -1,12 +1,12 @@
-FROM golang
+FROM golang:alpine AS Server
 
-RUN apt-get update -y
+RUN apk update
 
 #========#
 # PROTOC #
 #========#
 RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v24.0/protoc-24.0-linux-x86_64.zip -O /ProtocolBuffer.zip
-RUN apt-get install unzip -y
+RUN apk add unzip
 RUN unzip /ProtocolBuffer.zip -d /ProtocolBuffer
 ENV PATH="$PATH:/ProtocolBuffer/bin"
 RUN rm /ProtocolBuffer.zip
@@ -15,3 +15,6 @@ RUN rm /ProtocolBuffer.zip
 #======#
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+FROM redis AS Storage
+COPY --from=Server / /

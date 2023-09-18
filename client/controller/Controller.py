@@ -159,6 +159,7 @@ def deleteFile(fileName : str) -> bool:
 def login(username : str, passwd : str, email : str) -> bool :
     if username == "sae" and passwd == "admin" and email == "admin@sae.com":
         return True
+    return False
 
 class FileService:
     global ticket_id_list
