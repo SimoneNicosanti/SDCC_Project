@@ -37,6 +37,7 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
     # Preparazione chiamata gRPC
     try:
+        
         channel : grpc.Channel = grpc.insecure_channel(ticket.peer_addr, options=[('grpc.max_receive_message_length', int(os.environ.get("MAX_GRPC_MESSAGE_SIZE")))])
 
         stub = FileServiceStub(channel)

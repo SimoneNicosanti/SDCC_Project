@@ -80,6 +80,10 @@ func createTicket(oldTicketIndex int) Ticket {
 	return ticket
 }
 
+func startHeartbeat() {
+
+}
+
 func setupRabbitMQ() {
 	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
 	utils.ExitOnError("[*ERROR*] -> Impossibile contattare il server RabbitMQ\r\n", err)

@@ -21,11 +21,30 @@ import (
 	status "google.golang.org/grpc/status"
 )
 
+func (s *FileServiceServer) Delete() error {
+	s.incrementWorkload()
+	returnValue := doDelete()
+	s.decrementWorkload()
+	return returnValue
+}
+
+func doDelete() error {
+	//TODO
+	return nil
+}
+
 func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer) error {
+	s.incrementWorkload()
+	returnValue := doUpload(uploadStream)
+	s.decrementWorkload()
+	return returnValue
+}
+
+func doUpload(uploadStream client.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
-	ticketID, fileName, fileSize, shouldReturn, returnValue := retrieveMetadata(uploadStream)
-	if shouldReturn {
-		return returnValue
+	ticketID, fileName, fileSize, err := retrieveMetadata(uploadStream)
+	if err != nil {
+		return err
 	}
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di upload per file '%s'\r\nTicket: '%s'", fileName, ticketID))
 
@@ -49,7 +68,7 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	// Ridirezione su S3
 	go s3_boundary.SendToS3(fileName, s3RedirectionChannel)
 
-	err := rcvAndRedirectChunks(s3RedirectionChannel, cacheRedirectionChannel, isFileCacheable, uploadStream)
+	err = rcvAndRedirectChunks(s3RedirectionChannel, cacheRedirectionChannel, isFileCacheable, uploadStream)
 
 	if err != nil {
 		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nTICKET: '%s'", fileName, ticketID))
@@ -65,22 +84,29 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 	return nil
 }
 
-func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, string, int64, bool, error) {
+func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, string, int64, error) {
 	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
 	if !thereIsMetadata {
-		return "", "", 0, true, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*NO_METADATA*] - No metadata found")
+		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*NO_METADATA*] - No metadata found")
 	}
 	ticketID := md.Get("ticket_id")[0]
 	file_name := md.Get("file_name")[0]
 	file_size, err := strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
-		return "", "", 0, true, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
+		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 	}
-	return ticketID, file_name, file_size, false, nil
+	return ticketID, file_name, file_size, nil
 }
 
 // Permette al client di effettuare una richiesta di get con successo
 func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
+	s.incrementWorkload()
+	returnValue := doDownload(requestMessage, downloadStream)
+	s.decrementWorkload()
+	return returnValue
+}
+
+func doDownload(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.TicketId))
 	isValidRequest := checkTicket(requestMessage.TicketId)
 	if isValidRequest == -1 {
