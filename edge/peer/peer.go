@@ -102,7 +102,7 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, error) {
 	registryAddr := "registry:1234"
 
-	client, err := ConnectToNode(registryAddr)
+	client, err := utils.ConnectToNode(registryAddr)
 	utils.ExitOnError("", err)
 
 	call := client.Go("RegistryService.PeerEnter", *edgePeerPtr, adj, nil)

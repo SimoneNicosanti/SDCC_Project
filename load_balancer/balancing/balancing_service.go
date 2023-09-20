@@ -2,131 +2,145 @@ package balancing
 
 import (
 	"context"
+	"edge/proto/load_balancer"
 	"fmt"
 	"load_balancer/login"
-	"load_balancer/proto"
+	proto "load_balancer/proto/load_balancer"
 	"math"
 	"net"
 	"net/http"
 	"net/rpc"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
-func (server *BalancingServer) GetEdge(ctx context.Context, userInfo *proto.User) (*proto.Response, error) {
-	PrintEvent("GET_EDGE", "Received message, taking edge with minimum load")
+var balancingServer BalancingServiceServer = BalancingServiceServer{
+	mapMutex:           sync.RWMutex{},
+	edgeServerMap:      map[EdgeServer]int{},
+	heartbeatCheckTime: time.Now(),
+	heartbeats:         map[EdgeServer](time.Time){},
+}
+
+func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, userInfo *proto.User) (*proto.BalancerResponse, error) {
+	PrintEvent("GET_EDGE_SERVER", "Received message, taking edge server with minimum load")
 	success := login.UserLogin(userInfo.Username, userInfo.Passwd)
 	var edgeIpAddr string
 	var err error
 	if success {
-		edgeIpAddr, err = server.takeMinimumLoadEdge()
+		edgeIpAddr, err = balancingServer.takeMinimumLoadEdge()
 		if err != nil {
-			return &proto.Response{Success: false, EdgeIpAddr: ""}, err
+			return &proto.BalancerResponse{Success: false, EdgeIpAddr: ""}, err
 		}
 	} else {
 		edgeIpAddr = ""
 	}
-	return &proto.Response{Success: success, EdgeIpAddr: edgeIpAddr}, nil
+	return &proto.BalancerResponse{Success: success, EdgeIpAddr: edgeIpAddr}, nil
 }
 
-func (server *BalancingServer) takeMinimumLoadEdge() (ipAddr string, err error) {
-	server.mapMutex.Lock()
-	defer server.mapMutex.Unlock()
-	if len(server.peerServerMap) == 0 {
+func (balancingServer *BalancingServiceServer) takeMinimumLoadEdge() (ipAddr string, err error) {
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
+	if len(balancingServer.edgeServerMap) == 0 {
 		return "", fmt.Errorf("non ci sono edge disponibili")
 	}
-	var minLoadEdge PeerServer
+	var minLoadEdge EdgeServer
 	var minLoadValue = math.MaxInt
-	for edgePeer, edgeLoad := range server.peerServerMap {
-		if edgeLoad < minLoadValue {
-			minLoadEdge = edgePeer
+	for edgeServer, serverLoad := range balancingServer.edgeServerMap {
+		if serverLoad < minLoadValue {
+			minLoadEdge = edgeServer
 		}
 	}
-	server.peerServerMap[minLoadEdge]++
-	return minLoadEdge.PeerAddr, nil
+	balancingServer.edgeServerMap[minLoadEdge]++
+	return minLoadEdge.ServerAddr, nil
 }
 
 func ActAsBalancer() {
-	balancingServer := BalancingServer{
-		mapMutex:           sync.RWMutex{},
-		peerServerMap:      map[PeerServer]int{},
-		heartbeatCheckTime: time.Now(),
-		heartbeats:         map[PeerServer](time.Time){},
-	}
+	setupRPC()
+	setUpGRPC()
+	PrintEvent("BALANCER_STARTED", "Waiting for connections...")
+}
 
-	// TODO Registrare correttamente i servizi per Peer e Client
-	// Uno è RPC uno è gRPC
+func setupRPC() {
 	err := rpc.Register(&balancingServer)
-	if err != nil {
-		ExitOnError("Impossibile registrare il servizio", err)
-	}
-
+	ExitOnError("Impossibile registrare il servizio", err)
 	rpc.HandleHTTP()
 	list, err := net.Listen("tcp", ":4321")
-	if err != nil {
-		ExitOnError("Impossibile mettersi in ascolto sulla porta", err)
-	}
-
-	PrintEvent("BALANCER_STARTED", "Waiting for connections...")
-
+	ExitOnError("Impossibile mettersi in ascolto sulla porta", err)
 	go http.Serve(list, nil)
 	go checkHeartbeat()
 }
 
-func (server *BalancingServer) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *int) error {
+func setUpGRPC() {
+	ipAddr, err := GetMyIPAddr()
+	ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to retrieve balancer IP address", err)
+	lis, err := net.Listen("tcp", ipAddr+":0")
+	ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen on endpoint", err)
+	ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen", err)
+	opts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
+	}
+	grpcServer := grpc.NewServer(opts...)
+	proto.RegisterBalancingServiceServer(grpcServer, &BalancingServiceServer{})
+	PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+lis.Addr().String())
+	go grpcServer.Serve(lis)
+}
+
+func (balancingServer *BalancingServiceServer) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *int) error {
 	*replyPtr = 0
 
-	server.mapMutex.Lock()
-	defer server.mapMutex.Unlock()
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
 
-	peerServer := heartbeatMessage.PeerServer
-	_, isInMap := server.heartbeats[peerServer]
+	edgeServer := heartbeatMessage.EdgeServer
+	_, isInMap := balancingServer.heartbeats[edgeServer]
 	if !isInMap {
-		server.peerServerMap[peerServer] = heartbeatMessage.CurrentLoad
+		balancingServer.edgeServerMap[edgeServer] = heartbeatMessage.CurrentLoad
 	}
 
-	server.heartbeats[peerServer] = time.Now()
+	balancingServer.heartbeats[edgeServer] = time.Now()
 
 	return nil
 }
 
-// func checkHeartbeat() {
-// 	MONITOR_TIMER := utils.GetIntegerEnvironmentVariable("MONITOR_TIMER")
-// 	HEARTBEAT_THR := utils.GetIntegerEnvironmentVariable("HEARTBEAT_THR")
-// 	for {
-// 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
-// 		checkForDeadPeers(float64(HEARTBEAT_THR))
-// 	}
-// }
+func checkHeartbeat() {
+	MONITOR_TIMER := GetIntEnvironmentVariable("MONITOR_TIMER")
+	HEARTBEAT_THR := GetIntEnvironmentVariable("HEARTBEAT_THR")
+	for {
+		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
+		checkForDeadServers(float64(HEARTBEAT_THR))
+	}
+}
 
-// func checkForDeadPeers(heartbeatThr float64) {
-// 	peerMap.mutex.Lock()
-// 	defer peerMap.mutex.Unlock()
+func checkForDeadServers(heartbeatThr float64) {
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
 
-// 	lastCheckTime := peerMap.heartbeatCheckTime
-// 	for edgePeer, lastHeartbeatTime := range peerMap.heartbeats {
-// 		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
-// 			//Il peer viene considerato caduto e viene rimosso dalla rete
-// 			utils.PrintEvent("DEAD_PEER_FOUND", fmt.Sprintf("Peer '%s' è morto", edgePeer.PeerAddr))
-// 			deadPeerConn, isInMap := peerMap.connections[edgePeer]
-// 			if isInMap {
-// 				deadPeerConn.Close()
-// 				delete(peerMap.connections, edgePeer)
-// 			}
-// 			delete(peerMap.heartbeats, edgePeer)
-// 			//PrintGraph(graphMap.peerMap)
-// 		}
-// 	}
-// 	peerMap.heartbeatCheckTime = time.Now()
-// }
+	lastCheckTime := balancingServer.heartbeatCheckTime
+	for edgeServer, lastHeartbeatTime := range balancingServer.heartbeats {
+		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
+			//Il edgeServer viene considerato caduto e viene rimosso
+			PrintEvent("DEAD_EDGE_SRV_FOUND", fmt.Sprintf("Edge server '%s' è morto", edgeServer.ServerAddr))
+			_, isInMap := balancingServer.edgeServerMap[edgeServer]
+			if isInMap {
+				delete(balancingServer.edgeServerMap, edgeServer)
+			}
+			delete(balancingServer.heartbeats, edgeServer)
+		}
+	}
+	balancingServer.heartbeatCheckTime = time.Now()
+}
 
-func (server *BalancingServer) SignalJobEnd(peerServer PeerServer, returnPtr *int) error {
-	server.mapMutex.Lock()
-	defer server.mapMutex.Unlock()
+func (balancingServer *BalancingServiceServer) SignalJobEnd(edgeServer EdgeServer, returnPtr *int) error {
+	*returnPtr = 0
 
-	value, isInMap := server.peerServerMap[peerServer]
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
+
+	value, isInMap := balancingServer.edgeServerMap[edgeServer]
 	if isInMap && value > 0 {
-		server.peerServerMap[peerServer]--
+		balancingServer.edgeServerMap[edgeServer]--
 	}
 	return nil
 }

@@ -78,7 +78,7 @@ func heartbeatToRegistry() {
 func heartbeatFunction() {
 	heartbeatMessage := HeartbeatMessage{EdgePeer: SelfPeer}
 	if registryClient == nil {
-		newRegistryConnection, err := ConnectToNode("registry:1234")
+		newRegistryConnection, err := utils.ConnectToNode("registry:1234")
 		if err != nil {
 			utils.PrintEvent("REGISTRY_UNREACHABLE", "Impossibile stabilire connessione con il Registry")
 			return
@@ -131,7 +131,7 @@ func heartbeatFunction() {
 // }
 
 func connectAndAddNeighbour(peer EdgePeer) (*rpc.Client, error) {
-	client, err := ConnectToNode(peer.PeerAddr)
+	client, err := utils.ConnectToNode(peer.PeerAddr)
 	utils.PrintEvent("CONNECTION_ATTEMPT", "Tentativo di connessione a "+peer.PeerAddr)
 	// Nel caso in cui uno dei vicini non rispondesse alla nostra richiesta di connessione,
 	// il peer corrente lo ignorerà.

@@ -1,19 +1,15 @@
 package server
 
 import (
-	"context"
 	"edge/cache"
 	"edge/proto/client"
 	"edge/utils"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net"
-	"strings"
+	"net/rpc"
 	"sync"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"google.golang.org/grpc"
 )
 
@@ -27,106 +23,94 @@ type AuthorizedTicketIDs struct {
 	IDs   []string
 }
 
-var authorizedTicketIDs AuthorizedTicketIDs
-
-var serverEndpoint string
-var rabbitChannel *amqp.Channel
-
-func attemptPublishTicket(channel *amqp.Channel, ticket Ticket) error {
-	encoded, err := json.Marshal(ticket)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err = channel.PublishWithContext(ctx, "", utils.GetEnvironmentVariable("QUEUE_NAME"), false, false, amqp.Publishing{
-		ContentType: "text/plain",
-		Body:        encoded,
-	})
-
-	return err
-}
-
-func publishNewTicket(oldTicketIndex int) {
-	count := 0
-	ticket := createTicket(oldTicketIndex)
-	for count < 3 {
-		err := attemptPublishTicket(rabbitChannel, ticket)
-		// La funzione ritorna al primo tentativo con successo
-		if err == nil {
-			utils.PrintEvent("TICKET_PUBLISHED", fmt.Sprintf("il ticket '%s' è stato pubblicato", ticket.Id))
-			return
-		} else {
-			if strings.Contains(err.Error(), "Exception (504) Reason: \"channel/connection is not open\"") { //TODO da controllare
-				setupRabbitMQ()
-			}
-		}
-		count++
-		utils.PrintEvent("RABBITMQ_ERROR", fmt.Sprintf("Impossibile pubblicare ticket '%s' su rabbitMQ per la %d volta.\r\nL'errore restituito è: '%s'", ticket.Id, count, err.Error()))
-	}
-	// Dopo tre tentativi falliti verrà generato un errore
-	utils.PrintEvent("RABBITMQ_ERROR", fmt.Sprintf("Tutti i tentativi di pubblicare il ticket '%s' non hanno avuto successo", ticket.Id))
-	//TODO errore fatale!!
-	log.Panic("FATAL_ERR -> rabbitmq fatal err")
-
-}
-
-func createTicket(oldTicketIndex int) Ticket {
-	randomID, err := utils.GenerateUniqueRandomID(authorizedTicketIDs.IDs)
-	utils.ExitOnError("[*ERROR*] -> Impossibile generare un ID random", err)
-	authorizedTicketIDs.IDs[oldTicketIndex] = randomID
-	ticket := Ticket{serverEndpoint, randomID}
-	utils.PrintEvent("TICKET_GENERATED", "il ticket '"+randomID+"' è stato generato")
-	return ticket
-}
-
-func startHeartbeat() {
-
-}
-
-func setupRabbitMQ() {
-	conn, err := amqp.Dial("amqp://guest:guest@rabbit_mq:5672/")
-	utils.ExitOnError("[*ERROR*] -> Impossibile contattare il server RabbitMQ\r\n", err)
-
-	rabbitChannel, err = conn.Channel()
-	utils.ExitOnError("[*ERROR*] -> Impossibile aprire il canale verso la coda\r\n", err)
-
-	_, err = rabbitChannel.QueueDeclare(utils.GetEnvironmentVariable("QUEUE_NAME"), true, false, false, false, nil)
-	utils.ExitOnError("[*ERROR*] -> Impossibile dichiarare la coda\r\n", err)
-}
-
-func publishAllTicketsOnQueue(rabbitChannel *amqp.Channel) {
-	authorizedTicketIDs = AuthorizedTicketIDs{
-		mutex: sync.RWMutex{},
-		IDs:   make([]string, utils.GetIntEnvironmentVariable("EDGE_TICKETS_NUM")),
-	}
-	for i := 0; i < len(authorizedTicketIDs.IDs); i++ {
-		publishNewTicket(i)
-	}
-}
+var edgeServer EdgeServer
+var workload int = 0
+var balancerConnection *rpc.Client
 
 func ActAsServer() {
 	cache.GetCache().StartCache()
 	setUpGRPC()
-	setupRabbitMQ()
-	publishAllTicketsOnQueue(rabbitChannel)
+	go heartbeatToBalancer()
 	var forever chan struct{}
 	<-forever
 }
 
+func heartbeatToBalancer() {
+	utils.PrintEvent("HEARTBEAT_STARTED", "Inizio meccanismo di heartbeat verso il LoadBalancer")
+	HEARTBEAT_FREQUENCY := utils.GetIntEnvironmentVariable("HEARTBEAT_FREQUENCY")
+	for {
+		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
+		heartbeatFunction()
+	}
+}
+
+func heartbeatFunction() {
+	heartbeatMessage := HeartbeatMessage{EdgeServer: edgeServer}
+	if balancerConnection == nil {
+		newBalancerConnection, err := utils.ConnectToNode("load_balancer:4321")
+		if err != nil {
+			utils.PrintEvent("LOADBALANCER_UNREACHABLE", "Impossibile stabilire connessione con il Load Balancer")
+			return
+		}
+		balancerConnection = newBalancerConnection
+	}
+	call := balancerConnection.Go("BalancingServer.Heartbeat", heartbeatMessage, new(int), nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			utils.PrintEvent("HEARTBEAT_ERROR", "Invio di heartbeat al Load Balancer fallito")
+			log.Println(call.Error.Error())
+			balancerConnection.Close()
+			balancerConnection = nil
+		}
+	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_SERVER"))):
+		utils.PrintEvent("HEARTBEAT_ERROR", "Timer scaduto.. Impossibile contattare il Load Balancer")
+		log.Println(call.Error.Error())
+		balancerConnection.Close()
+		balancerConnection = nil
+	}
+
+}
+
+func notifyJobEnd() {
+	if balancerConnection == nil {
+		newBalancerConnection, err := utils.ConnectToNode("load_balancer:4321")
+		if err != nil {
+			utils.PrintEvent("LOADBALANCER_UNREACHABLE", "Impossibile stabilire connessione con il Load Balancer")
+			return
+		}
+		balancerConnection = newBalancerConnection
+	}
+	call := balancerConnection.Go("BalancingServer.SignalJobEnd", edgeServer, new(int), nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			utils.PrintEvent("JOB_END_ERROR", "Notifica di job end al Load Balancer fallita")
+			log.Println(call.Error.Error())
+			balancerConnection.Close()
+			balancerConnection = nil
+		}
+	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_SERVER"))):
+		utils.PrintEvent("JOB_END_ERROR", "Timer scaduto.. Impossibile contattare il Load Balancer")
+		log.Println(call.Error.Error())
+		balancerConnection.Close()
+		balancerConnection = nil
+	}
+}
+
 func setUpGRPC() {
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to retrieve server IP address", err)
 	lis, err := net.Listen("tcp", ipAddr+":0")
-	utils.ExitOnError("[*ERROR*] -> failed to listen on endpoint", err)
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen on endpoint", err)
 	//Otteniamo l'indirizzo usato
-	serverEndpoint = lis.Addr().String()
-	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
+	edgeServer = EdgeServer{lis.Addr().String()}
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen", err)
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
 	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+serverEndpoint)
+	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+edgeServer.ServerAddr)
 	go grpcServer.Serve(lis)
 }

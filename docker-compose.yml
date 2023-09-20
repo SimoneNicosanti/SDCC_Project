@@ -55,7 +55,7 @@ services:
         tmpfs:
           size: 100M   ## Va per pagine di memoria principale (4k)
       - ./edge:/src
-      - ./proto/file_transfer:/proto
+      - ./proto:/proto
       # - ./docker/edge_files:/files
       - ./docker/aws:/aws
     working_dir : /src

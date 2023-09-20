@@ -36,7 +36,7 @@ func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 
 	_, isPresent := adjacentsMap.peerConns[edgePeer]
 	if !isPresent {
-		conn, err := ConnectToNode(edgePeer.PeerAddr)
+		conn, err := utils.ConnectToNode(edgePeer.PeerAddr)
 		if err != nil {
 			utils.PrintEvent("PING_RCV_ERROR", fmt.Sprintf("Impossibile aprire connessione verso il nodo '%s'", edgePeer.PeerAddr))
 			return err
@@ -89,7 +89,7 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *int) error {
 	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 	if checkServedRequest(fileRequestMessage) {
-		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.TicketId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
+		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestID+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
 	fileRequestMessage.TTL--
@@ -130,7 +130,7 @@ func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
 	defer fileRequestCache.mutex.Unlock()
 
 	for message := range fileRequestCache.messageMap {
-		if message.TicketId == fileRequestMessage.TicketId && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
+		if message.RequestID == fileRequestMessage.RequestID && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
 			return true
 		}
 	}

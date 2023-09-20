@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.24.0
-// source: LoadBalancer.proto
+// source: load_balancer/LoadBalancer.proto
 
-package proto
+package load_balancer
 
 import (
 	context "context"
@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BalancingServiceClient interface {
-	GetEdge(ctx context.Context, in *User, opts ...grpc.CallOption) (*Response, error)
+	GetEdge(ctx context.Context, in *User, opts ...grpc.CallOption) (*BalancerResponse, error)
 }
 
 type balancingServiceClient struct {
@@ -37,8 +37,8 @@ func NewBalancingServiceClient(cc grpc.ClientConnInterface) BalancingServiceClie
 	return &balancingServiceClient{cc}
 }
 
-func (c *balancingServiceClient) GetEdge(ctx context.Context, in *User, opts ...grpc.CallOption) (*Response, error) {
-	out := new(Response)
+func (c *balancingServiceClient) GetEdge(ctx context.Context, in *User, opts ...grpc.CallOption) (*BalancerResponse, error) {
+	out := new(BalancerResponse)
 	err := c.cc.Invoke(ctx, BalancingService_GetEdge_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (c *balancingServiceClient) GetEdge(ctx context.Context, in *User, opts ...
 // All implementations must embed UnimplementedBalancingServiceServer
 // for forward compatibility
 type BalancingServiceServer interface {
-	GetEdge(context.Context, *User) (*Response, error)
+	GetEdge(context.Context, *User) (*BalancerResponse, error)
 	mustEmbedUnimplementedBalancingServiceServer()
 }
 
@@ -58,7 +58,7 @@ type BalancingServiceServer interface {
 type UnimplementedBalancingServiceServer struct {
 }
 
-func (UnimplementedBalancingServiceServer) GetEdge(context.Context, *User) (*Response, error) {
+func (UnimplementedBalancingServiceServer) GetEdge(context.Context, *User) (*BalancerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEdge not implemented")
 }
 func (UnimplementedBalancingServiceServer) mustEmbedUnimplementedBalancingServiceServer() {}
@@ -105,5 +105,5 @@ var BalancingService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "LoadBalancer.proto",
+	Metadata: "load_balancer/LoadBalancer.proto",
 }

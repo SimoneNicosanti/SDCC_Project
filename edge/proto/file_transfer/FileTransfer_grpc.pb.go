@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.24.0
-// source: FileTransfer.proto
+// source: file_transfer/FileTransfer.proto
 
-package client
+package file_transfer
 
 import (
 	context "context"
@@ -19,8 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	FileService_Download_FullMethodName = "/client.FileService/Download"
-	FileService_Upload_FullMethodName   = "/client.FileService/Upload"
+	FileService_Download_FullMethodName = "/file_transfer.FileService/Download"
+	FileService_Upload_FullMethodName   = "/file_transfer.FileService/Upload"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -82,7 +82,7 @@ func (c *fileServiceClient) Upload(ctx context.Context, opts ...grpc.CallOption)
 
 type FileService_UploadClient interface {
 	Send(*FileChunk) error
-	CloseAndRecv() (*Response, error)
+	CloseAndRecv() (*FileResponse, error)
 	grpc.ClientStream
 }
 
@@ -94,11 +94,11 @@ func (x *fileServiceUploadClient) Send(m *FileChunk) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *fileServiceUploadClient) CloseAndRecv() (*Response, error) {
+func (x *fileServiceUploadClient) CloseAndRecv() (*FileResponse, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
-	m := new(Response)
+	m := new(FileResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func _FileService_Upload_Handler(srv interface{}, stream grpc.ServerStream) erro
 }
 
 type FileService_UploadServer interface {
-	SendAndClose(*Response) error
+	SendAndClose(*FileResponse) error
 	Recv() (*FileChunk, error)
 	grpc.ServerStream
 }
@@ -172,7 +172,7 @@ type fileServiceUploadServer struct {
 	grpc.ServerStream
 }
 
-func (x *fileServiceUploadServer) SendAndClose(m *Response) error {
+func (x *fileServiceUploadServer) SendAndClose(m *FileResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -188,7 +188,7 @@ func (x *fileServiceUploadServer) Recv() (*FileChunk, error) {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var FileService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "client.FileService",
+	ServiceName: "file_transfer.FileService",
 	HandlerType: (*FileServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -203,11 +203,11 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "FileTransfer.proto",
+	Metadata: "file_transfer/FileTransfer.proto",
 }
 
 const (
-	EdgeFileService_DownloadFromEdge_FullMethodName = "/client.EdgeFileService/DownloadFromEdge"
+	EdgeFileService_DownloadFromEdge_FullMethodName = "/file_transfer.EdgeFileService/DownloadFromEdge"
 )
 
 // EdgeFileServiceClient is the client API for EdgeFileService service.
@@ -310,7 +310,7 @@ func (x *edgeFileServiceDownloadFromEdgeServer) Send(m *FileChunk) error {
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var EdgeFileService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "client.EdgeFileService",
+	ServiceName: "file_transfer.EdgeFileService",
 	HandlerType: (*EdgeFileServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -320,5 +320,5 @@ var EdgeFileService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "FileTransfer.proto",
+	Metadata: "file_transfer/FileTransfer.proto",
 }

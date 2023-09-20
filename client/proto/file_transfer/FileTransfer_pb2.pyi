@@ -10,7 +10,7 @@ class ErrorCodes(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     OK: _ClassVar[ErrorCodes]
     S3_ERROR: _ClassVar[ErrorCodes]
     CHUNK_ERROR: _ClassVar[ErrorCodes]
-    INVALID_TICKET: _ClassVar[ErrorCodes]
+    INVALID_METADATA: _ClassVar[ErrorCodes]
     FILE_CREATE_ERROR: _ClassVar[ErrorCodes]
     FILE_NOT_FOUND_ERROR: _ClassVar[ErrorCodes]
     FILE_WRITE_ERROR: _ClassVar[ErrorCodes]
@@ -19,7 +19,7 @@ class ErrorCodes(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
 OK: ErrorCodes
 S3_ERROR: ErrorCodes
 CHUNK_ERROR: ErrorCodes
-INVALID_TICKET: ErrorCodes
+INVALID_METADATA: ErrorCodes
 FILE_CREATE_ERROR: ErrorCodes
 FILE_NOT_FOUND_ERROR: ErrorCodes
 FILE_WRITE_ERROR: ErrorCodes
@@ -27,12 +27,12 @@ FILE_READ_ERROR: ErrorCodes
 STREAM_CLOSE_ERROR: ErrorCodes
 
 class FileDownloadRequest(_message.Message):
-    __slots__ = ["ticket_id", "file_name"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
-    FILE_NAME_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
-    file_name: str
-    def __init__(self, ticket_id: _Optional[str] = ..., file_name: _Optional[str] = ...) -> None: ...
+    __slots__ = ["fileName", "requestId"]
+    FILENAME_FIELD_NUMBER: _ClassVar[int]
+    REQUESTID_FIELD_NUMBER: _ClassVar[int]
+    fileName: str
+    requestId: str
+    def __init__(self, fileName: _Optional[str] = ..., requestId: _Optional[str] = ...) -> None: ...
 
 class FileChunk(_message.Message):
     __slots__ = ["chunk"]
@@ -40,10 +40,10 @@ class FileChunk(_message.Message):
     chunk: bytes
     def __init__(self, chunk: _Optional[bytes] = ...) -> None: ...
 
-class Response(_message.Message):
-    __slots__ = ["ticket_id", "success"]
-    TICKET_ID_FIELD_NUMBER: _ClassVar[int]
+class FileResponse(_message.Message):
+    __slots__ = ["requestId", "success"]
+    REQUESTID_FIELD_NUMBER: _ClassVar[int]
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
-    ticket_id: str
+    requestId: str
     success: bool
-    def __init__(self, ticket_id: _Optional[str] = ..., success: bool = ...) -> None: ...
+    def __init__(self, requestId: _Optional[str] = ..., success: bool = ...) -> None: ...

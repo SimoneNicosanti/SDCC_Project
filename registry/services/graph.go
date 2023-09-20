@@ -30,8 +30,8 @@ func buildGraph(graph *Graph) {
 					utils.PrintEvent("GRAPH_ERROR", fmt.Sprintf("Ottenimento vicini del nodo '%s' non riuscita", peer.PeerAddr))
 				}
 				graph.AddNodeAndConnections(peer, *neighboursPtr)
-			case <-time.After(time.Second * time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
-				utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), peer.PeerAddr))
+			case <-time.After(time.Second * time.Duration(utils.GetIntEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
+				utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetIntEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), peer.PeerAddr))
 			}
 		}
 	}

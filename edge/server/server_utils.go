@@ -5,29 +5,29 @@ import (
 	"sync"
 )
 
-type FileServiceServer struct {
-	client.UnimplementedFileServiceServer
-	currentServerLoad int
-	mutex             sync.RWMutex
+type HeartbeatMessage struct {
+	EdgeServer  EdgeServer
+	CurrentLoad int
 }
 
-func checkTicket(requestId string) int {
-	for index, authRequestId := range authorizedTicketIDs.IDs {
-		if requestId == authRequestId {
-			return index
-		}
-	}
-	return -1
+type EdgeServer struct {
+	ServerAddr string
+}
+
+type FileServiceServer struct {
+	client.UnimplementedFileServiceServer
+	currentWorkload int
+	mutex           sync.RWMutex
 }
 
 func (server *FileServiceServer) incrementWorkload() {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	server.currentServerLoad++
+	server.currentWorkload++
 }
 
 func (server *FileServiceServer) decrementWorkload() {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	server.currentServerLoad--
+	server.currentWorkload--
 }

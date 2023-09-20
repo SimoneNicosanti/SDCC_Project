@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/rpc"
 	"os"
 	"strconv"
 	"strings"
@@ -171,4 +172,12 @@ func PrintCustomMap(customMap map[string]byte, ifEmpty string, ifNotEmpty string
 		}
 	}
 	PrintEvent(eventMessage, listString)
+}
+
+func ConnectToNode(addr string) (*rpc.Client, error) {
+	client, err := rpc.DialHTTP("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("errore Dial HTTP")
+	}
+	return client, nil
 }

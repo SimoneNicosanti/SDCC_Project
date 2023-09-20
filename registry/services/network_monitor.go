@@ -8,8 +8,8 @@ import (
 )
 
 func checkHeartbeat() {
-	MONITOR_TIMER := utils.GetIntegerEnvironmentVariable("MONITOR_TIMER")
-	HEARTBEAT_THR := utils.GetIntegerEnvironmentVariable("HEARTBEAT_THR")
+	MONITOR_TIMER := utils.GetIntEnvironmentVariable("MONITOR_TIMER")
+	HEARTBEAT_THR := utils.GetIntEnvironmentVariable("HEARTBEAT_THR")
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
 		checkForDeadPeers(float64(HEARTBEAT_THR))
@@ -108,8 +108,8 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 					if call_2.Error == nil {
 						createdAnEdge = true
 					}
-				case <-time.After(time.Second * time.Duration(utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
-					utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Durante un tentativo di unificazione di componenti connesse non è stata ricevuta una risposta entro %d secondi da '%s' o '%s'", utils.GetIntegerEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), firstCompNode.PeerAddr, secondCompNode.PeerAddr))
+				case <-time.After(time.Second * time.Duration(utils.GetIntEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"))):
+					utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Durante un tentativo di unificazione di componenti connesse non è stata ricevuta una risposta entro %d secondi da '%s' o '%s'", utils.GetIntEnvironmentVariable("MAX_WAITING_TIME_FOR_REGISTRY"), firstCompNode.PeerAddr, secondCompNode.PeerAddr))
 				}
 			}
 		}

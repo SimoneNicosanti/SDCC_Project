@@ -1,18 +1,19 @@
 syntax = "proto3";
 package load_balancer;
 
-option go_package = "../proto";
+option go_package = "../proto/load_balancer";
 
 service BalancingService {
-    rpc GetEdge(User) returns (Response);
+    rpc GetEdge(User) returns (BalancerResponse);
 }
 
 message User {
-    string username = 1 ;
-    string passwd = 2 ;
+    string username = 1;
+    string passwd = 2;
 }
 
-message Response {
-    bool success = 1 ;
-    string edgeIpAddr = 2 ;
+message BalancerResponse {
+    bool success = 1;
+    string edgeIpAddr = 2;
+    string requestId = 3;
 }

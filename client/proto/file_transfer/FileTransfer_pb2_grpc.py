@@ -15,14 +15,14 @@ class FileServiceStub(object):
             channel: A grpc.Channel.
         """
         self.Download = channel.unary_stream(
-                '/client.FileService/Download',
+                '/file_transfer.FileService/Download',
                 request_serializer=file__transfer_dot_FileTransfer__pb2.FileDownloadRequest.SerializeToString,
                 response_deserializer=file__transfer_dot_FileTransfer__pb2.FileChunk.FromString,
                 )
         self.Upload = channel.stream_unary(
-                '/client.FileService/Upload',
+                '/file_transfer.FileService/Upload',
                 request_serializer=file__transfer_dot_FileTransfer__pb2.FileChunk.SerializeToString,
-                response_deserializer=file__transfer_dot_FileTransfer__pb2.Response.FromString,
+                response_deserializer=file__transfer_dot_FileTransfer__pb2.FileResponse.FromString,
                 )
 
 
@@ -53,11 +53,11 @@ def add_FileServiceServicer_to_server(servicer, server):
             'Upload': grpc.stream_unary_rpc_method_handler(
                     servicer.Upload,
                     request_deserializer=file__transfer_dot_FileTransfer__pb2.FileChunk.FromString,
-                    response_serializer=file__transfer_dot_FileTransfer__pb2.Response.SerializeToString,
+                    response_serializer=file__transfer_dot_FileTransfer__pb2.FileResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'client.FileService', rpc_method_handlers)
+            'file_transfer.FileService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
@@ -76,7 +76,7 @@ class FileService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/client.FileService/Download',
+        return grpc.experimental.unary_stream(request, target, '/file_transfer.FileService/Download',
             file__transfer_dot_FileTransfer__pb2.FileDownloadRequest.SerializeToString,
             file__transfer_dot_FileTransfer__pb2.FileChunk.FromString,
             options, channel_credentials,
@@ -93,9 +93,9 @@ class FileService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.stream_unary(request_iterator, target, '/client.FileService/Upload',
+        return grpc.experimental.stream_unary(request_iterator, target, '/file_transfer.FileService/Upload',
             file__transfer_dot_FileTransfer__pb2.FileChunk.SerializeToString,
-            file__transfer_dot_FileTransfer__pb2.Response.FromString,
+            file__transfer_dot_FileTransfer__pb2.FileResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -110,7 +110,7 @@ class EdgeFileServiceStub(object):
             channel: A grpc.Channel.
         """
         self.DownloadFromEdge = channel.unary_stream(
-                '/client.EdgeFileService/DownloadFromEdge',
+                '/file_transfer.EdgeFileService/DownloadFromEdge',
                 request_serializer=file__transfer_dot_FileTransfer__pb2.FileDownloadRequest.SerializeToString,
                 response_deserializer=file__transfer_dot_FileTransfer__pb2.FileChunk.FromString,
                 )
@@ -135,7 +135,7 @@ def add_EdgeFileServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'client.EdgeFileService', rpc_method_handlers)
+            'file_transfer.EdgeFileService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
@@ -154,7 +154,7 @@ class EdgeFileService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_stream(request, target, '/client.EdgeFileService/DownloadFromEdge',
+        return grpc.experimental.unary_stream(request, target, '/file_transfer.EdgeFileService/DownloadFromEdge',
             file__transfer_dot_FileTransfer__pb2.FileDownloadRequest.SerializeToString,
             file__transfer_dot_FileTransfer__pb2.FileChunk.FromString,
             options, channel_credentials,

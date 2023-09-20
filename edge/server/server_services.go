@@ -42,17 +42,13 @@ func (s *FileServiceServer) Upload(uploadStream client.FileService_UploadServer)
 
 func doUpload(uploadStream client.FileService_UploadServer) error {
 	// Apri il file locale dove verranno scritti i chunks
-	ticketID, fileName, fileSize, err := retrieveMetadata(uploadStream)
+	defer notifyJobEnd()
+
+	requestID, fileName, fileSize, err := retrieveMetadata(uploadStream)
 	if err != nil {
 		return err
 	}
-	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di upload per file '%s'\r\nTicket: '%s'", fileName, ticketID))
-
-	isValidRequest := checkTicket(ticketID)
-	if isValidRequest == -1 {
-		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Request with Invalid Ticket")
-	}
-	defer publishNewTicket(isValidRequest)
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di upload per file '%s'\r\nRequest ID: '%s'", fileName, requestID))
 
 	// Salvo prima su S3 e poi su file locale
 	s3RedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("UPLOAD_CHANNEL_SIZE"))
@@ -71,11 +67,11 @@ func doUpload(uploadStream client.FileService_UploadServer) error {
 	err = rcvAndRedirectChunks(s3RedirectionChannel, cacheRedirectionChannel, isFileCacheable, uploadStream)
 
 	if err != nil {
-		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nTICKET: '%s'", fileName, ticketID))
+		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nRequest ID: '%s'", fileName, requestID))
 		return status.Error(codes.Code(client.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
 	}
-	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nTICKET: '%s'", fileName, ticketID))
-	response := client.Response{TicketId: ticketID, Success: true}
+	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nRequest ID: '%s'", fileName, requestID))
+	response := client.Response{RequestID: requestID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
 		return status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
@@ -87,13 +83,13 @@ func doUpload(uploadStream client.FileService_UploadServer) error {
 func retrieveMetadata(uploadStream client.FileService_UploadServer) (string, string, int64, error) {
 	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
 	if !thereIsMetadata {
-		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*NO_METADATA*] - No metadata found")
+		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
 	}
 	ticketID := md.Get("ticket_id")[0]
 	file_name := md.Get("file_name")[0]
 	file_size, err := strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
-		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
+		return "", "", 0, status.Error(codes.Code(client.ErrorCodes_INVALID_METADATA), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 	}
 	return ticketID, file_name, file_size, nil
 }
@@ -107,12 +103,13 @@ func (s *FileServiceServer) Download(requestMessage *client.FileDownloadRequest,
 }
 
 func doDownload(requestMessage *client.FileDownloadRequest, downloadStream client.FileService_DownloadServer) error {
+	defer notifyJobEnd()
+
 	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.TicketId))
-	isValidRequest := checkTicket(requestMessage.TicketId)
+	isValidRequest := checkRequest(requestMessage.TicketId)
 	if isValidRequest == -1 {
-		return status.Error(codes.Code(client.ErrorCodes_INVALID_TICKET), "[*ERROR*] - Invalid Ticket Request")
+		return status.Error(codes.Code(client.ErrorCodes_INVALID_METADATA), "[*ERROR*] - Invalid Ticket Request")
 	}
-	defer publishNewTicket(isValidRequest)
 
 	if cache.GetCache().IsFileInCache(requestMessage.FileName) {
 		// ce l'ha l'edge corrente --> Leggi file e invia chunk
@@ -195,7 +192,7 @@ func lookupFileInNetwork(lookupServer *peer.LookupServer, requestMessage *client
 	fileRequest := peer.FileRequestMessage{
 		FileName:       requestMessage.FileName,
 		TTL:            utils.GetIntEnvironmentVariable("REQUEST_TTL"),
-		TicketId:       requestMessage.TicketId,
+		RequestID:      requestMessage.RequestID,
 		SenderPeer:     peer.SelfPeer,
 		CallbackServer: lookupServer.UdpAddr}
 	peer.NeighboursFileLookup(fileRequest)
@@ -240,7 +237,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	}
 	grpcClient := client.NewEdgeFileServiceClient(conn)
 	context := context.Background()
-	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{TicketId: "", FileName: fileName})
+	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &client.FileDownloadRequest{RequestId: "", FileName: fileName})
 	if err != nil {
 		customErr := status.Error(codes.Code(client.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}

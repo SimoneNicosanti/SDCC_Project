@@ -2,10 +2,10 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from login import Login_pb2 as login_dot_Login__pb2
+from load_balancer import LoadBalancer_pb2 as load__balancer_dot_LoadBalancer__pb2
 
 
-class LoginServiceStub(object):
+class BalancingServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -14,42 +14,42 @@ class LoginServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.login = channel.unary_unary(
-                '/login.LoginService/login',
-                request_serializer=login_dot_Login__pb2.UserInfo.SerializeToString,
-                response_deserializer=login_dot_Login__pb2.Response.FromString,
+        self.GetEdge = channel.unary_unary(
+                '/load_balancer.BalancingService/GetEdge',
+                request_serializer=load__balancer_dot_LoadBalancer__pb2.User.SerializeToString,
+                response_deserializer=load__balancer_dot_LoadBalancer__pb2.BalancerResponse.FromString,
                 )
 
 
-class LoginServiceServicer(object):
+class BalancingServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def login(self, request, context):
+    def GetEdge(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_LoginServiceServicer_to_server(servicer, server):
+def add_BalancingServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'login': grpc.unary_unary_rpc_method_handler(
-                    servicer.login,
-                    request_deserializer=login_dot_Login__pb2.UserInfo.FromString,
-                    response_serializer=login_dot_Login__pb2.Response.SerializeToString,
+            'GetEdge': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetEdge,
+                    request_deserializer=load__balancer_dot_LoadBalancer__pb2.User.FromString,
+                    response_serializer=load__balancer_dot_LoadBalancer__pb2.BalancerResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'login.LoginService', rpc_method_handlers)
+            'load_balancer.BalancingService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
-class LoginService(object):
+class BalancingService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def login(request,
+    def GetEdge(request,
             target,
             options=(),
             channel_credentials=None,
@@ -59,8 +59,8 @@ class LoginService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/login.LoginService/login',
-            login_dot_Login__pb2.UserInfo.SerializeToString,
-            login_dot_Login__pb2.Response.FromString,
+        return grpc.experimental.unary_unary(request, target, '/load_balancer.BalancingService/GetEdge',
+            load__balancer_dot_LoadBalancer__pb2.User.SerializeToString,
+            load__balancer_dot_LoadBalancer__pb2.BalancerResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

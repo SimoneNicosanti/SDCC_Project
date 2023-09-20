@@ -23,11 +23,6 @@ type AdjacentPeers struct {
 	filterMap    map[EdgePeer](*bloom.StableBloomFilter)
 }
 
-type HeartbeatMessage struct {
-	EdgePeer       EdgePeer
-	NeighboursList map[EdgePeer]byte
-}
-
 type BloomFilterMessage struct {
 	EdgePeer    EdgePeer
 	BloomFilter []byte
@@ -36,10 +31,15 @@ type BloomFilterMessage struct {
 type FileRequestMessage struct {
 	FileName       string
 	TTL            int
+	RequestID      string
 	SenderPeer     EdgePeer
-	TicketId       string
 	ForwarderPeer  EdgePeer
 	CallbackServer string
+}
+
+type HeartbeatMessage struct {
+	EdgePeer       EdgePeer
+	NeighboursList map[EdgePeer]byte
 }
 
 // Attenzione alla gestione dei Mutex
@@ -76,12 +76,4 @@ func CallAdjAddNeighbour(client *rpc.Client, neighbourPeer EdgePeer) error {
 	}
 
 	return nil
-}
-
-func ConnectToNode(addr string) (*rpc.Client, error) {
-	client, err := rpc.DialHTTP("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("errore Dial HTTP")
-	}
-	return client, nil
 }
