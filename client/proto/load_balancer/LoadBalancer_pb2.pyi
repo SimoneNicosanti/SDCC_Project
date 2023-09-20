@@ -4,6 +4,12 @@ from typing import ClassVar as _ClassVar, Optional as _Optional
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class LoginResponse(_message.Message):
+    __slots__ = ["logged"]
+    LOGGED_FIELD_NUMBER: _ClassVar[int]
+    logged: bool
+    def __init__(self, logged: bool = ...) -> None: ...
+
 class User(_message.Message):
     __slots__ = ["username", "passwd"]
     USERNAME_FIELD_NUMBER: _ClassVar[int]

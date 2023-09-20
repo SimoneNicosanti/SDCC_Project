@@ -1,7 +1,7 @@
 package server
 
 import (
-	"edge/proto/client"
+	"edge/proto/file_transfer"
 	"edge/redirection_channel"
 	"fmt"
 	"io"
@@ -11,7 +11,7 @@ import (
 )
 
 type GrpcReceiver interface {
-	Recv() (*client.FileChunk, error)
+	Recv() (*file_transfer.FileChunk, error)
 }
 
 func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.RedirectionChannel, cacheRedirectionChannel redirection_channel.RedirectionChannel, isFileCacheable bool, grpcReceiver GrpcReceiver) error {
@@ -40,7 +40,7 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 				break
 			}
 			if err != nil {
-				customErr := status.Error(codes.Code(client.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
+				customErr := status.Error(codes.Code(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
 				mainRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 				if isFileCacheable {
 					cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -77,13 +77,13 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 	}
 }
 
-func redirectStreamToClient(clientRedirectionChannel redirection_channel.RedirectionChannel, clientDownloadStream client.FileService_DownloadServer) error {
+func redirectStreamToClient(clientRedirectionChannel redirection_channel.RedirectionChannel, clientDownloadStream file_transfer.FileService_DownloadServer) error {
 	defer close(clientRedirectionChannel.ReturnChannel)
 	for message := range clientRedirectionChannel.MessageChannel {
 		if message.Err != nil {
 			return message.Err
 		}
-		err := clientDownloadStream.Send(&client.FileChunk{Chunk: message.Body})
+		err := clientDownloadStream.Send(&file_transfer.FileChunk{Chunk: message.Body})
 		if err != nil {
 			clientRedirectionChannel.ReturnChannel <- err
 			return err

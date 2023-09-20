@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"edge/engineering"
 	"edge/utils"
 	"errors"
 	"fmt"
@@ -28,15 +29,6 @@ type BloomFilterMessage struct {
 	BloomFilter []byte
 }
 
-type FileRequestMessage struct {
-	FileName       string
-	TTL            int
-	RequestID      string
-	SenderPeer     EdgePeer
-	ForwarderPeer  EdgePeer
-	CallbackServer string
-}
-
 type HeartbeatMessage struct {
 	EdgePeer       EdgePeer
 	NeighboursList map[EdgePeer]byte
@@ -45,7 +37,12 @@ type HeartbeatMessage struct {
 // Attenzione alla gestione dei Mutex
 type FileRequestCache struct {
 	mutex      sync.RWMutex
-	messageMap map[FileRequestMessage](time.Time)
+	messageMap map[engineering.FileRequestMessage](time.Time)
+}
+
+var fileRequestCache = FileRequestCache{
+	sync.RWMutex{},
+	map[engineering.FileRequestMessage]time.Time{},
 }
 
 var adjacentsMap = AdjacentPeers{
@@ -53,11 +50,6 @@ var adjacentsMap = AdjacentPeers{
 	map[EdgePeer]AdjConnection{},
 	sync.RWMutex{},
 	map[EdgePeer]*bloom.StableBloomFilter{},
-}
-
-var fileRequestCache = FileRequestCache{
-	sync.RWMutex{},
-	map[FileRequestMessage]time.Time{},
 }
 
 // Comunica ai tuoi vicini di aggiungerti come loro vicino

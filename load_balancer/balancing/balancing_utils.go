@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"load_balancer/proto"
+	proto "load_balancer/proto/load_balancer"
 	"log"
 	"net"
 	"os"

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"edge/proto/client"
+	"edge/proto/file_transfer"
 	"sync"
 )
 
@@ -15,7 +15,7 @@ type EdgeServer struct {
 }
 
 type FileServiceServer struct {
-	client.UnimplementedFileServiceServer
+	file_transfer.UnimplementedFileServiceServer
 	currentWorkload int
 	mutex           sync.RWMutex
 }

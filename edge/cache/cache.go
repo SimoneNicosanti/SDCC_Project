@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"edge/proto/client"
+	"edge/proto/file_transfer"
 	"edge/redirection_channel"
 	"edge/utils"
 	"errors"
@@ -140,7 +140,7 @@ func (cache *Cache) RemoveFileFromCache(fileName string) {
 func (cache *Cache) GetFileForReading(fileName string) (*os.File, error) {
 	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 	if err != nil {
-		return nil, status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
+		return nil, status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
 	}
 	cache.incrementPopularity(fileName)
 	return localFile, nil

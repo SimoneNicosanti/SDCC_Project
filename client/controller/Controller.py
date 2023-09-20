@@ -11,6 +11,7 @@ import json, grpc, os, io
 
 request_id_list : list = []
 data = None
+userInfo:User = User(username="a",passwd="a")
 sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
@@ -41,7 +42,6 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
     return result
 
 def getResponseFromBalancer() -> BalancerResponse:
-    #TODO prendere edge da load balancer e contattare lui
     try:
         channel = grpc.insecure_channel("load_balancer:4321")
         stub = BalancingServiceStub(channel)
@@ -52,26 +52,20 @@ def getResponseFromBalancer() -> BalancerResponse:
         if e.code().value[0] == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
         raise e
-    #TODO creazione utente userInfo = User(username="", passwd="")
     return stub.GetEdge(userInfo)
     
 
 
 def execAction(requestId : str, requestType : Method, fileName : str, stub : FileServiceStub) -> bool:
-
     switch : dict = {
         Method.GET : getFile,
         Method.PUT : putFile,
         Method.DEL : deleteFile
     }
-
     action = switch[requestType]
-
     Debug.debug(f"Invio della richiesta di '{requestType.name} {fileName}' all'edge peer")
-
     # Esecuzione dell'azione
     result = action(fileName, requestId, stub)
-
     return result
 
 
@@ -99,7 +93,7 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
 
 
 def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
-    response : Response
+    response : BalancerResponse
        
     try:
         # Otteniamo la size del file da inviare
@@ -141,11 +135,22 @@ def deleteFile(fileName : str) -> bool:
     #TODO implementazione operazione di delete del file
     pass
 
-def login(username : str, passwd : str, email : str) -> bool :
-    #TODO procedura login attraverso load balancer
-    if username == "sae" and passwd == "admin" and email == "admin@sae.com":
-        return True
-    return False
+def login(username : str, passwd : str) -> bool :
+    global userInfo
+    userInfo = User(username=username, passwd=passwd)
+    try:
+        channel = grpc.insecure_channel("load_balancer:4321")
+        stub = BalancingServiceStub(channel)
+    except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
+        if e.code().value[0] == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
+        raise e
+    loginResponse:LoginResponse = stub.LogClient(userInfo)
+    return loginResponse.logged
+
 
 class FileService:
     global request_id_list

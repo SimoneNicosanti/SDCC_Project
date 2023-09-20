@@ -5,6 +5,11 @@ option go_package = "../proto/load_balancer";
 
 service BalancingService {
     rpc GetEdge(User) returns (BalancerResponse);
+    rpc LogClient(User) returns (LoginResponse);
+}
+
+message LoginResponse {
+    bool logged = 1;
 }
 
 message User {

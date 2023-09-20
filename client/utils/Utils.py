@@ -1,4 +1,4 @@
-import jproperties
+import os, jproperties
 
 class Color:
     RESET = '\033[0m'
@@ -21,3 +21,44 @@ def readProperties(fileName : str, propertyName : str) -> str :
     with open(fileName, "rb") as propertiesFile :
         configs.load(propertiesFile)
         return configs.get(propertyName).data
+
+def clearScreen():
+    if os.name == 'posix':
+        os.system('clear')
+    elif os.name == 'nt':
+        os.system('cls')
+
+def displayLoginBanner():
+    clearScreen()
+    colored_print("""
+
+██╗       ██████╗   ██████╗  ██╗ ███╗   ██╗
+██║      ██╔═══██╗ ██╔════╝  ██║ ████╗  ██║
+██║      ██║   ██║ ██║  ███╗ ██║ ██╔██╗ ██║
+██║      ██║   ██║ ██║   ██║ ██║ ██║╚██╗██║
+███████╗ ╚██████╔╝ ╚██████╔╝ ██║ ██║ ╚████║
+╚══════╝  ╚═════╝   ╚═════╝  ╚═╝ ╚═╝  ╚═══╝
+                                    
+                  
+I N S E R I R E    L E    C R E D E N Z I A L I
+                                    
+    """,Color.YELLOW)
+
+def displayMenuBanner(username:str):
+    clearScreen()
+    colored_print(f"""
+███████╗  █████╗  ███████╗
+██╔════╝ ██╔══██╗ ██╔════╝
+███████╗ ███████║ █████╗  
+╚════██║ ██╔══██║ ██╔══╝  
+███████║ ██║  ██║ ███████╗
+╚══════╝ ╚═╝  ╚═╝ ╚══════╝    Storage nel Cloud Continuum
+
+                        
+B E N T O R N A T O   {addSpacesBetweenChars(username.upper())} !
+                  
+    """,Color.YELLOW)
+
+def addSpacesBetweenChars(input_string:str) -> str:
+    spaced_string = ' '.join(input_string)
+    return spaced_string

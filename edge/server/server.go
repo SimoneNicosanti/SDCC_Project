@@ -2,26 +2,15 @@ package server
 
 import (
 	"edge/cache"
-	"edge/proto/client"
+	"edge/proto/file_transfer"
 	"edge/utils"
 	"log"
 	"net"
 	"net/rpc"
-	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 )
-
-type Ticket struct {
-	ServerEndpoint string
-	Id             string
-}
-
-type AuthorizedTicketIDs struct {
-	mutex sync.RWMutex
-	IDs   []string
-}
 
 var edgeServer EdgeServer
 var workload int = 0
@@ -29,7 +18,7 @@ var balancerConnection *rpc.Client
 
 func ActAsServer() {
 	cache.GetCache().StartCache()
-	setUpGRPC()
+	setUpGRPCForFileTransfer()
 	go heartbeatToBalancer()
 	var forever chan struct{}
 	<-forever
@@ -98,7 +87,7 @@ func notifyJobEnd() {
 	}
 }
 
-func setUpGRPC() {
+func setUpGRPCForFileTransfer() {
 	ipAddr, err := utils.GetMyIPAddr()
 	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to retrieve server IP address", err)
 	lis, err := net.Listen("tcp", ipAddr+":0")
@@ -110,7 +99,7 @@ func setUpGRPC() {
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
-	client.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
+	file_transfer.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
 	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+edgeServer.ServerAddr)
 	go grpcServer.Serve(lis)
 }

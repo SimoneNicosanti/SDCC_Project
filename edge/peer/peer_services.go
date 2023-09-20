@@ -2,13 +2,13 @@ package peer
 
 import (
 	"edge/cache"
-	"edge/proto/client"
+	"edge/engineering"
+	"edge/proto/file_transfer"
 	"edge/utils"
 	"fmt"
 	"io"
 	"os"
 	"syscall"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,7 +26,7 @@ type FileLookupResponse struct {
 }
 
 type PeerFileServer struct {
-	client.UnimplementedEdgeFileServiceServer
+	file_transfer.UnimplementedEdgeFileServiceServer
 	IpAddr string
 }
 
@@ -86,9 +86,9 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 	return nil
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *int) error {
-	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
-	if checkServedRequest(fileRequestMessage) {
+func (p *EdgePeer) FileLookup(fileRequestMessage engineering.FileRequestMessage, returnPtr *int) error {
+	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer)
+	if engineering.GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage) {
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestID+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
@@ -125,24 +125,10 @@ func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *
 	return nil
 }
 
-func checkServedRequest(fileRequestMessage FileRequestMessage) bool {
-	fileRequestCache.mutex.Lock()
-	defer fileRequestCache.mutex.Unlock()
-
-	for message := range fileRequestCache.messageMap {
-		if message.RequestID == fileRequestMessage.RequestID && message.FileName == fileRequestMessage.FileName && message.SenderPeer == fileRequestMessage.SenderPeer {
-			return true
-		}
-	}
-	fileRequestCache.messageMap[fileRequestMessage] = time.Now()
-	return false
-
-}
-
-func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownloadRequest, downloadStream client.EdgeFileService_DownloadFromEdgeServer) error {
+func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *file_transfer.FileDownloadRequest, downloadStream file_transfer.EdgeFileService_DownloadFromEdgeServer) error {
 	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileDownloadRequest.FileName)
 	if err != nil {
-		return status.Error(codes.Code(client.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*OPEN_ERROR*] -> Apertura del file fallita.")
+		return status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*OPEN_ERROR*] -> Apertura del file fallita.")
 	}
 	//TODO Gestire errore FLOCK
 	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
@@ -157,9 +143,9 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *client.FileDownlo
 			break
 		}
 		if err != nil {
-			return status.Error(codes.Code(client.ErrorCodes_FILE_READ_ERROR), "[*READ_ERROR*] -> Faliure durante l'operazione di lettura.\r")
+			return status.Error(codes.Code(file_transfer.ErrorCodes_FILE_READ_ERROR), "[*READ_ERROR*] -> Faliure durante l'operazione di lettura.\r")
 		}
-		downloadStream.Send(&client.FileChunk{Chunk: buffer[:n]})
+		downloadStream.Send(&file_transfer.FileChunk{Chunk: buffer[:n]})
 	}
 	return nil
 }

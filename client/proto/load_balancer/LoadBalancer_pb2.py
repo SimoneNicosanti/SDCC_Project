@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n load_balancer/LoadBalancer.proto\x12\rload_balancer\"(\n\x04User\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x0e\n\x06passwd\x18\x02 \x01(\t\"J\n\x10\x42\x61lancerResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x12\n\nedgeIpAddr\x18\x02 \x01(\t\x12\x11\n\trequestId\x18\x03 \x01(\t2S\n\x10\x42\x61lancingService\x12?\n\x07GetEdge\x12\x13.load_balancer.User\x1a\x1f.load_balancer.BalancerResponseB\x18Z\x16../proto/load_balancerb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n load_balancer/LoadBalancer.proto\x12\rload_balancer\"\x1f\n\rLoginResponse\x12\x0e\n\x06logged\x18\x01 \x01(\x08\"(\n\x04User\x12\x10\n\x08username\x18\x01 \x01(\t\x12\x0e\n\x06passwd\x18\x02 \x01(\t\"J\n\x10\x42\x61lancerResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x12\n\nedgeIpAddr\x18\x02 \x01(\t\x12\x11\n\trequestId\x18\x03 \x01(\t2\x93\x01\n\x10\x42\x61lancingService\x12?\n\x07GetEdge\x12\x13.load_balancer.User\x1a\x1f.load_balancer.BalancerResponse\x12>\n\tLogClient\x12\x13.load_balancer.User\x1a\x1c.load_balancer.LoginResponseB\x18Z\x16../proto/load_balancerb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -22,10 +22,12 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'Z\026../proto/load_balancer'
-  _globals['_USER']._serialized_start=51
-  _globals['_USER']._serialized_end=91
-  _globals['_BALANCERRESPONSE']._serialized_start=93
-  _globals['_BALANCERRESPONSE']._serialized_end=167
-  _globals['_BALANCINGSERVICE']._serialized_start=169
-  _globals['_BALANCINGSERVICE']._serialized_end=252
+  _globals['_LOGINRESPONSE']._serialized_start=51
+  _globals['_LOGINRESPONSE']._serialized_end=82
+  _globals['_USER']._serialized_start=84
+  _globals['_USER']._serialized_end=124
+  _globals['_BALANCERRESPONSE']._serialized_start=126
+  _globals['_BALANCERRESPONSE']._serialized_end=200
+  _globals['_BALANCINGSERVICE']._serialized_start=203
+  _globals['_BALANCINGSERVICE']._serialized_end=350
 # @@protoc_insertion_point(module_scope)

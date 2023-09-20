@@ -2,7 +2,6 @@ package balancing
 
 import (
 	"context"
-	"edge/proto/load_balancer"
 	"fmt"
 	"load_balancer/login"
 	proto "load_balancer/proto/load_balancer"
@@ -23,13 +22,24 @@ var balancingServer BalancingServiceServer = BalancingServiceServer{
 	heartbeats:         map[EdgeServer](time.Time){},
 }
 
+func ActAsBalancer() {
+	setupRPC()
+	setUpGRPC()
+	PrintEvent("BALANCER_STARTED", "Waiting for connections...")
+}
+
+func (balancingServer *BalancingServiceServer) LogClient(ctx context.Context, userInfo *proto.User) (bool, error) {
+	PrintEvent("CLIENT_LOGIN_ATTEMPT", "Received message, taking edge server with minimum load")
+	return login.UserLogin(userInfo.Username, userInfo.Passwd), nil
+}
+
 func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, userInfo *proto.User) (*proto.BalancerResponse, error) {
 	PrintEvent("GET_EDGE_SERVER", "Received message, taking edge server with minimum load")
 	success := login.UserLogin(userInfo.Username, userInfo.Passwd)
 	var edgeIpAddr string
 	var err error
 	if success {
-		edgeIpAddr, err = balancingServer.takeMinimumLoadEdge()
+		edgeIpAddr, err = balancingServer.PickEdgeServer()
 		if err != nil {
 			return &proto.BalancerResponse{Success: false, EdgeIpAddr: ""}, err
 		}
@@ -39,7 +49,7 @@ func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, user
 	return &proto.BalancerResponse{Success: success, EdgeIpAddr: edgeIpAddr}, nil
 }
 
-func (balancingServer *BalancingServiceServer) takeMinimumLoadEdge() (ipAddr string, err error) {
+func (balancingServer *BalancingServiceServer) PickEdgeServer() (ipAddr string, err error) {
 	balancingServer.mapMutex.Lock()
 	defer balancingServer.mapMutex.Unlock()
 	if len(balancingServer.edgeServerMap) == 0 {
@@ -54,12 +64,6 @@ func (balancingServer *BalancingServiceServer) takeMinimumLoadEdge() (ipAddr str
 	}
 	balancingServer.edgeServerMap[minLoadEdge]++
 	return minLoadEdge.ServerAddr, nil
-}
-
-func ActAsBalancer() {
-	setupRPC()
-	setUpGRPC()
-	PrintEvent("BALANCER_STARTED", "Waiting for connections...")
 }
 
 func setupRPC() {

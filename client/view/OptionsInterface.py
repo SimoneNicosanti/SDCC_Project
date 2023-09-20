@@ -1,7 +1,7 @@
 from controller import Controller
 from engineering.Ticket import Method
 from engineering import MyErrors, Debug
-import os
+import getpass
 from utils.Utils import *
 
 def perform_action(request_type : Method, file_name : str):
@@ -17,16 +17,34 @@ def perform_action(request_type : Method, file_name : str):
     colored_print(f"Richiesta '{request_type.name} {file_name}' soddisfatta.", Color.GREEN)
 
 def main():
-    colored_print("Benvenuto nella CLI di gestione file!", Color.YELLOW)
+    displayLoginBanner()
+    loginSuccessful : bool = False
+    username:str
+    reset : int = 0
+    while not loginSuccessful:
+        username = input("\033[33mUSERNAME: \033[0m").strip()
+        password = getpass.getpass("\033[33mPASSWORD: \033[0m", stream=None).strip()
+        loginSuccessful = Controller.login(username=username, passwd=password) #TODO GESTIRE ERRORI GRPC
+        if not loginSuccessful:
+            reset += 1
+            colored_print(f"Wrong username or password. Try again!", Color.RED)
+        if reset == 3:
+            reset = 0
+            displayLoginBanner()
+    option_interface(username)
+
+
+def option_interface(username:str):
+    displayMenuBanner(username)
 
     while True:
-        colored_print("Inserisci l'azione (get/put/delete/clear) >>> ", Color.YELLOW, end = "")
+        colored_print("Inserisci l'azione (get/put/delete/clear/exit) >>> ", Color.YELLOW, end = "")
         action = input("").strip().lower()
-        if action == "clear":
-            if os.name == 'posix':
-                os.system('clear')
-            elif os.name == 'nt':
-                os.system('cls')
+        if action == "exit":
+            clearScreen()
+            return
+        elif action == "clear":
+            clearScreen()
         elif action in ["get", "put", "delete"]:
             while True:
                 colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
