@@ -56,7 +56,7 @@ func ReadConfigFile(filename string) (map[string]string, error) {
 func GetEnvironmentVariable(variableName string) string {
 	variableString, isPresent := os.LookupEnv(variableName)
 	if !isPresent {
-		ExitOnError("Variabile d'ambiente non presente", errors.New("varibile non presente"))
+		ExitOnError("Variabile d'ambiente non presente", errors.New("variabile non presente"))
 	}
 	return variableString
 }

@@ -2,7 +2,6 @@ package peer
 
 import (
 	"edge/cache"
-	"edge/engineering"
 	"edge/proto/file_transfer"
 	"edge/utils"
 	"fmt"
@@ -86,12 +85,17 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 	return nil
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage engineering.FileRequestMessage, returnPtr *int) error {
-	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer)
-	if engineering.GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage) {
+func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *int) error {
+	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
+	//Se la richiesta è già stata servita una volta, la ignoriamo
+	if GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage) {
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestID+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
+
+	//Aggiungiamo la richiesta in cache e proviamo a soddisfarla
+	GetFileRequestCache().AddRequestInCache(fileRequestMessage)
+
 	fileRequestMessage.TTL--
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
@@ -130,7 +134,6 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *file_transfer.Fil
 	if err != nil {
 		return status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), "[*OPEN_ERROR*] -> Apertura del file fallita.")
 	}
-	//TODO Gestire errore FLOCK
 	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
 	defer syscall.Flock(int(localFile.Fd()), syscall.F_UNLCK)
 	defer localFile.Close()

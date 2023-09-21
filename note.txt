@@ -46,3 +46,5 @@ N-1] testing
         test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
         come i parametri di configurazione influenzano le prestazioni
 N] inventare storiella per presentare (sistema di sensori IoT (?))
+
+//pulizia codice (mettere lettere piccole a metodi che non vanno esportati ?)

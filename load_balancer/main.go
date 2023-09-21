@@ -1,9 +1,14 @@
 package main
 
-import "load_balancer/balancing"
+import (
+	"load_balancer/services"
+	"load_balancer/utils"
+)
 
 func main() {
-	balancing.ActAsBalancer()
+
+	utils.SetupEnvVariables("conf.properties")
+	services.ActAsBalancer()
 
 	var forever chan struct{}
 	<-forever

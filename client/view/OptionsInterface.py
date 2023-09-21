@@ -1,5 +1,5 @@
 from controller import Controller
-from engineering.Ticket import Method
+from engineering.Method import Method
 from engineering import MyErrors, Debug
 import getpass
 from utils.Utils import *
@@ -24,13 +24,18 @@ def main():
     while not loginSuccessful:
         username = input("\033[33mUSERNAME: \033[0m").strip()
         password = getpass.getpass("\033[33mPASSWORD: \033[0m", stream=None).strip()
-        loginSuccessful = Controller.login(username=username, passwd=password) #TODO GESTIRE ERRORI GRPC
-        if not loginSuccessful:
+        try:
+            loginSuccessful = Controller.login(username=username, passwd=password) #TODO GESTIRE ERRORI GRPC
+            if not loginSuccessful:
+                reset += 1
+                colored_print(f"Wrong username or password. Try again!", Color.RED)
+            if reset == 3:
+                reset = 0
+                displayLoginBanner()
+        except MyErrors.ConnectionFailedException  as e:
             reset += 1
-            colored_print(f"Wrong username or password. Try again!", Color.RED)
-        if reset == 3:
-            reset = 0
-            displayLoginBanner()
+            colored_print(f"Ci sono stati errori durante la connessione con il server. Ritenta.", Color.RED)
+            Debug.errorDebug(e.message)
     option_interface(username)
 
 
@@ -44,7 +49,7 @@ def option_interface(username:str):
             clearScreen()
             return
         elif action == "clear":
-            clearScreen()
+            displayMenuBanner(username)
         elif action in ["get", "put", "delete"]:
             while True:
                 colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
@@ -60,7 +65,7 @@ def option_interface(username:str):
                     perform_action(Method.PUT, file_name)
                 elif action == "delete":
                     perform_action(Method.DEL, file_name)
-            except (MyErrors.InvalidTicketException, MyErrors.ConnectionFailedException)  as e:
+            except (MyErrors.InvalidMetadataException, MyErrors.ConnectionFailedException)  as e:
                 colored_print(f"Ci sono stati errori durante la connessione con il server. Ritenta.", Color.RED)
                 Debug.errorDebug(e.message)
             except MyErrors.RequestFailedException as e:

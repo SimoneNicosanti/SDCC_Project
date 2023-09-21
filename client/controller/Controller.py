@@ -1,28 +1,25 @@
 from engineering import Debug, MyErrors
-from engineering.Ticket import Ticket, Method
+from engineering.Method import Method
 from proto.file_transfer.FileTransfer_pb2 import *
 from proto.file_transfer.FileTransfer_pb2_grpc import *
 from proto.load_balancer.LoadBalancer_pb2 import *
 from proto.load_balancer.LoadBalancer_pb2_grpc import *
 from grpc import StatusCode
 from asyncio import Semaphore
-from pika.exceptions import StreamLostError, ChannelWrongStateError
 import json, grpc, os, io
 
-request_id_list : list = []
 data = None
 userInfo:User = User(username="a",passwd="a")
 sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
-    count = 0 
+    
     if requestType == Method.PUT and not os.path.exists(os.environ.get("FILES_PATH") + fileName):
         raise MyErrors.FileNotFound("Il file da caricare non esiste in locale.")
     # Otteniamo l'indirizzo del peer da contattare
-    response: BalancerResponse = getResponseFromBalancer()
+    response: BalancerResponse = getEdgeFromBalancer()
     if not response.success:
         return False
-    request_id_list.append(response.requestId)
     # Preparazione chiamata gRPC
     try:
         channel : grpc.Channel = grpc.insecure_channel(response.edgeIpAddr, options=[('grpc.max_receive_message_length', int(os.environ.get("MAX_GRPC_MESSAGE_SIZE")))])
@@ -36,30 +33,28 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
         raise e
     # Esecuzione dell'azione
     result = execAction(requestId = response.requestId, requestType = requestType, fileName = fileName, stub = stub)
-    # Rimuoviamo il ticket dalla lista di ticket_id che stiamo usando
-    request_id_list.remove(response.requestId)
 
     return result
 
-def getResponseFromBalancer() -> BalancerResponse:
+def getEdgeFromBalancer() -> BalancerResponse:
     try:
-        channel = grpc.insecure_channel("load_balancer:4321")
+        #TODO inserire indirizzi in file configurazione
+        channel = grpc.insecure_channel("load_balancer:5432")
         stub = BalancingServiceStub(channel)
+        return stub.GetEdge(userInfo)
     except grpc.RpcError as e:
         print(e.code())
         print(e.code().value)
         print(e.details())
-        if e.code().value[0] == StatusCode.UNAVAILABLE:
+        if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
         raise e
-    return stub.GetEdge(userInfo)
     
-
 
 def execAction(requestId : str, requestType : Method, fileName : str, stub : FileServiceStub) -> bool:
     switch : dict = {
-        Method.GET : getFile,
-        Method.PUT : putFile,
+        Method.GET : downloadFile,
+        Method.PUT : uploadFile,
         Method.DEL : deleteFile
     }
     action = switch[requestType]
@@ -69,10 +64,10 @@ def execAction(requestId : str, requestType : Method, fileName : str, stub : Fil
     return result
 
 
-def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
+def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool :
     try:
         # Otteniamo i chunks dalla chiamata gRPC
-        chunks = stub.Download(FileDownloadRequest(ticket_id = ticket_id, file_name = filename))
+        chunks = stub.Download(FileDownloadRequest(requestId = requestId, fileName = filename))
         # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
         return FileService().writeChunks(chunks = chunks, filename = filename)
     except StopIteration as e:
@@ -83,7 +78,7 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
-        if e.code().value[0] == ErrorCodes.INVALID_TICKET:
+        if e.code().value[0] == ErrorCodes.INVALID_METADATA:
             raise MyErrors.InvalidMetadataException("Metadata inviati non validi.")
         if e.code().value[0] == ErrorCodes.FILE_READ_ERROR or e.code().value[0] == ErrorCodes.S3_ERROR:
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
@@ -92,19 +87,19 @@ def getFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         raise e
 
 
-def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
+def uploadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool :
     response : BalancerResponse
        
     try:
         # Otteniamo la size del file da inviare
-        file_size = os.path.getsize(filename = os.environ.get("FILES_PATH") + filename)
+        fileSize = os.path.getsize(filename = os.environ.get("FILES_PATH") + filename)
         # Dividiamo il file in chunks
         #with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
         chunks = FileService().getChunks(filename = filename)
         # Effettuiamo la chiamata gRPC
         response = stub.Upload(
             chunks,
-            metadata = (('file_name', filename), ('ticket_id', ticket_id), ('file_size', str(file_size)), )
+            metadata = (('file_name', filename), ('request_id', requestId), ('file_size', str(fileSize)), )
         )
     except IOError as e:
             raise MyErrors.FailedToOpenException(f"Impossibile aprire file: {str(e)}")
@@ -114,8 +109,8 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         print(e.details())
         if e.code().value[0] == ErrorCodes.FILE_NOT_FOUND_ERROR:
             raise MyErrors.FileNotFoundException("File richiesto non trovato.")
-        if e.code().value[0] == ErrorCodes.INVALID_TICKET:
-            raise MyErrors.InvalidTicketException("Ticket usato non valido.")
+        if e.code().value[0] == ErrorCodes.INVALID_METADATA:
+            raise MyErrors.InvalidMetadataException("Metadati inviati non validi.")
         if e.code().value[0] == ErrorCodes.FILE_READ_ERROR:
             raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
         if e.code().value[0] == ErrorCodes.S3_ERROR:
@@ -123,10 +118,9 @@ def putFile(filename : str, ticket_id : str, stub : FileServiceStub) -> bool :
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
         raise e
-    
 
     # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
-    if response.ticket_id != ticket_id:
+    if response.requestId != requestId:
         raise MyErrors.RequestFailedException("Impossibile soddisfare la richiesta. E' stata ricevuta una risposta relativa ad un'altra richiesta.")
     
     return response.success
@@ -139,17 +133,18 @@ def login(username : str, passwd : str) -> bool :
     global userInfo
     userInfo = User(username=username, passwd=passwd)
     try:
-        channel = grpc.insecure_channel("load_balancer:4321")
+        channel = grpc.insecure_channel("load_balancer:5432")
         stub = BalancingServiceStub(channel)
+        loginResponse:LoginResponse = stub.LogClient(userInfo)
+        return loginResponse.logged
     except grpc.RpcError as e:
         print(e.code())
         print(e.code().value)
         print(e.details())
-        if e.code().value[0] == StatusCode.UNAVAILABLE:
+        if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
         raise e
-    loginResponse:LoginResponse = stub.LogClient(userInfo)
-    return loginResponse.logged
+    
 
 
 class FileService:

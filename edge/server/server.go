@@ -43,7 +43,7 @@ func heartbeatFunction() {
 		}
 		balancerConnection = newBalancerConnection
 	}
-	call := balancerConnection.Go("BalancingServer.Heartbeat", heartbeatMessage, new(int), nil)
+	call := balancerConnection.Go("BalancingServiceServer.Heartbeat", heartbeatMessage, new(int), nil)
 	select {
 	case <-call.Done:
 		if call.Error != nil {

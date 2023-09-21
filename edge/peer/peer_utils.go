@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"edge/engineering"
 	"edge/utils"
 	"errors"
 	"fmt"
@@ -37,12 +36,7 @@ type HeartbeatMessage struct {
 // Attenzione alla gestione dei Mutex
 type FileRequestCache struct {
 	mutex      sync.RWMutex
-	messageMap map[engineering.FileRequestMessage](time.Time)
-}
-
-var fileRequestCache = FileRequestCache{
-	sync.RWMutex{},
-	map[engineering.FileRequestMessage]time.Time{},
+	messageMap map[FileRequestMessage](time.Time)
 }
 
 var adjacentsMap = AdjacentPeers{

@@ -1,4 +1,4 @@
-package engineering
+package peer
 
 import (
 	"edge/utils"
@@ -11,45 +11,40 @@ type FileRequestMessage struct {
 	TTL            int
 	RequestID      string
 	CallbackServer string
-	SenderPeer     string
-	ForwarderPeer  string
+	SenderPeer     EdgePeer
+	ForwarderPeer  EdgePeer
 }
 
 // Attenzione alla gestione dei Mutex
-type fileRequestCache struct {
+type RequestCache struct {
 	mutex      sync.RWMutex
 	requestMap map[FileRequestMessage](time.Time)
 }
 
-var cache = fileRequestCache{
+var requestCache = RequestCache{
 	sync.RWMutex{},
 	map[FileRequestMessage]time.Time{},
 }
 
-func GetFileRequestCache() *fileRequestCache {
-	return &cache
+func GetFileRequestCache() *RequestCache {
+	return &requestCache
 }
 
-func (cache *fileRequestCache) AddRequestInCache(request FileRequestMessage) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+func (requestCache *RequestCache) AddRequestInCache(request FileRequestMessage) {
+	requestCache.mutex.Lock()
+	defer requestCache.mutex.Unlock()
 
-	cache.requestMap[request] = time.Now()
+	requestCache.requestMap[request] = time.Now()
 }
 
-//NB: Richiedere prima il lock del mutex
-func (cache *fileRequestCache) removeRequestInCache(request FileRequestMessage) {
-	delete(cache.requestMap, request)
-}
-
-func (cache *fileRequestCache) IsRequestAlreadyServed(fileRequestMessage FileRequestMessage) bool {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+func (requestCache *RequestCache) IsRequestAlreadyServed(fileRequestMessage FileRequestMessage) bool {
+	requestCache.mutex.Lock()
+	defer requestCache.mutex.Unlock()
 
 	var success bool = false
 	var requestToDelete []FileRequestMessage = []FileRequestMessage{}
 
-	for request, ttl := range cache.requestMap {
+	for request, ttl := range requestCache.requestMap {
 		var expirationTime time.Time = ttl.Add(time.Duration(utils.GetInt64EnvironmentVariable("REQUEST_CACHE_TTL")))
 		if time.Now().After(expirationTime) {
 			requestToDelete = append(requestToDelete, request)
@@ -57,11 +52,11 @@ func (cache *fileRequestCache) IsRequestAlreadyServed(fileRequestMessage FileReq
 			success = true
 		}
 	}
-	cache.requestMap[fileRequestMessage] = time.Now()
+	requestCache.requestMap[fileRequestMessage] = time.Now()
 
 	// Eliminazione delle richieste scadute dalla cache (è improbabile che le riceveremo nuovamente)
 	for _, request := range requestToDelete {
-		delete(cache.requestMap, request)
+		delete(requestCache.requestMap, request)
 	}
 
 	return success

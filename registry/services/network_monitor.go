@@ -90,8 +90,6 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 				thereIsEdge = existsEdge()
 			}
 			if thereIsEdge {
-				// TODO Decidere se l'aggiornamento della rete viene fatto prima o dopo:
-				// se fatto prima potrebbero fallire le call, se fatto dopo potrebbe essere inconsistente la rete
 
 				firstNodeConn := peerMap.connections[firstCompNode]
 				secondNodeConn := peerMap.connections[secondCompNode]

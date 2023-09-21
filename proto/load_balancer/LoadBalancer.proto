@@ -8,6 +8,11 @@ service BalancingService {
     rpc LogClient(User) returns (LoginResponse);
 }
 
+enum ErrorCodes {
+    OK = 0;
+    NO_SERVER_AVAILABLE = 16;
+}
+
 message LoginResponse {
     bool logged = 1;
 }

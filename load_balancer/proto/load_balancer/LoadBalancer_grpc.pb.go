@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	BalancingService_GetEdge_FullMethodName = "/load_balancer.BalancingService/GetEdge"
+	BalancingService_GetEdge_FullMethodName   = "/load_balancer.BalancingService/GetEdge"
+	BalancingService_LogClient_FullMethodName = "/load_balancer.BalancingService/LogClient"
 )
 
 // BalancingServiceClient is the client API for BalancingService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BalancingServiceClient interface {
 	GetEdge(ctx context.Context, in *User, opts ...grpc.CallOption) (*BalancerResponse, error)
+	LogClient(ctx context.Context, in *User, opts ...grpc.CallOption) (*LoginResponse, error)
 }
 
 type balancingServiceClient struct {
@@ -46,11 +48,21 @@ func (c *balancingServiceClient) GetEdge(ctx context.Context, in *User, opts ...
 	return out, nil
 }
 
+func (c *balancingServiceClient) LogClient(ctx context.Context, in *User, opts ...grpc.CallOption) (*LoginResponse, error) {
+	out := new(LoginResponse)
+	err := c.cc.Invoke(ctx, BalancingService_LogClient_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BalancingServiceServer is the server API for BalancingService service.
 // All implementations must embed UnimplementedBalancingServiceServer
 // for forward compatibility
 type BalancingServiceServer interface {
 	GetEdge(context.Context, *User) (*BalancerResponse, error)
+	LogClient(context.Context, *User) (*LoginResponse, error)
 	mustEmbedUnimplementedBalancingServiceServer()
 }
 
@@ -60,6 +72,9 @@ type UnimplementedBalancingServiceServer struct {
 
 func (UnimplementedBalancingServiceServer) GetEdge(context.Context, *User) (*BalancerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEdge not implemented")
+}
+func (UnimplementedBalancingServiceServer) LogClient(context.Context, *User) (*LoginResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LogClient not implemented")
 }
 func (UnimplementedBalancingServiceServer) mustEmbedUnimplementedBalancingServiceServer() {}
 
@@ -92,6 +107,24 @@ func _BalancingService_GetEdge_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BalancingService_LogClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(User)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BalancingServiceServer).LogClient(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BalancingService_LogClient_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BalancingServiceServer).LogClient(ctx, req.(*User))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BalancingService_ServiceDesc is the grpc.ServiceDesc for BalancingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +135,10 @@ var BalancingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEdge",
 			Handler:    _BalancingService_GetEdge_Handler,
+		},
+		{
+			MethodName: "LogClient",
+			Handler:    _BalancingService_LogClient_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

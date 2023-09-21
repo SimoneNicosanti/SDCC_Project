@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"edge/cache"
-	"edge/engineering"
 	"edge/peer"
 	"edge/proto/file_transfer"
 	"edge/redirection_channel"
@@ -81,18 +80,18 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 	return nil
 }
 
-func retrieveMetadata(uploadStream file_transfer.FileService_UploadServer) (string, string, int64, error) {
+func retrieveMetadata(uploadStream file_transfer.FileService_UploadServer) (requestID string, file_name string, file_size int64, err error) {
 	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
 	if !thereIsMetadata {
 		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
 	}
-	ticketID := md.Get("ticket_id")[0]
-	file_name := md.Get("file_name")[0]
-	file_size, err := strconv.ParseInt(md.Get("file_size")[0], 10, 64)
+	requestID = md.Get("request_id")[0]
+	file_name = md.Get("file_name")[0]
+	file_size, err = strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
 		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 	}
-	return ticketID, file_name, file_size, nil
+	return requestID, file_name, file_size, nil
 }
 
 // Permette al client di effettuare una richiesta di get con successo
@@ -106,12 +105,7 @@ func (s *FileServiceServer) Download(requestMessage *file_transfer.FileDownloadR
 func doDownload(requestMessage *file_transfer.FileDownloadRequest, downloadStream file_transfer.FileService_DownloadServer) error {
 	defer notifyJobEnd()
 
-	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nTicket: '%s'", requestMessage.FileName, requestMessage.RequestId))
-	//TODO serve davvero gestire le richieste?
-	isValidRequest := checkRequest(requestMessage.RequestId)
-	if isValidRequest == -1 {
-		return status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), "[*ERROR*] - Invalid Ticket Request")
-	}
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di download per file '%s'\r\nRequestID: '%s'", requestMessage.FileName, requestMessage.RequestId))
 
 	if cache.GetCache().IsFileInCache(requestMessage.FileName) {
 		// ce l'ha l'edge corrente --> Leggi file e invia chunk
@@ -191,14 +185,13 @@ func redirectFromS3(fileName string, downloadStream file_transfer.FileService_Do
 // Invia richieste di lookup ad alcuni dei tuoi vicini. Ritorna un channel dal quale possono essere lette le risposte alla file lookup.
 func lookupFileInNetwork(lookupServer *peer.LookupServer, requestMessage *file_transfer.FileDownloadRequest) chan *peer.FileLookupResponse {
 
-	fileRequest := engineering.FileRequestMessage{
-		FileName:       requestMessage.FileName,
-		TTL:            utils.GetIntEnvironmentVariable("REQUEST_TTL"),
-		RequestID:      requestMessage.RequestId,
-		SenderPeer:     peer.SelfPeer.PeerAddr,
-		ForwarderPeer:  peer.SelfPeer.PeerAddr,
-		CallbackServer: lookupServer.UdpAddr}
-	peer.NeighboursFileLookup(fileRequest)
+	peer.NeighboursFileLookupWithoutFileRequest(
+		requestMessage.FileName,
+		utils.GetIntEnvironmentVariable("REQUEST_TTL"),
+		requestMessage.RequestId,
+		peer.SelfPeer.PeerAddr,
+		peer.SelfPeer.PeerAddr,
+		lookupServer.UdpAddr)
 
 	callbackChannel := make(chan *peer.FileLookupResponse, 10)
 	go lookupServer.ReadFromServer(callbackChannel)

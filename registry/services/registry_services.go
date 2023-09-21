@@ -11,22 +11,6 @@ import (
 	"time"
 )
 
-// var connectionMap ConnectionMap = ConnectionMap{
-// 	sync.RWMutex{},
-// 	make(map[EdgePeer](*rpc.Client)),
-// }
-
-// var graphMap GraphMap = GraphMap{
-// 	mutex:   sync.RWMutex{},
-// 	peerMap: map[EdgePeer](map[EdgePeer](byte)){},
-// }
-
-// var heartbeatMap HeartbeatMap = HeartbeatMap{
-// 	sync.RWMutex{},
-// 	time.Now(),
-// 	make(map[EdgePeer](time.Time)),
-// }
-
 var peerMap PeerMap = PeerMap{
 	mutex:              sync.RWMutex{},
 	connections:        map[EdgePeer]*rpc.Client{},

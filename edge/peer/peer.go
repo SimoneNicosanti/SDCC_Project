@@ -2,7 +2,6 @@ package peer
 
 import (
 	"edge/cache"
-	"edge/engineering"
 	"edge/proto/file_transfer"
 	"edge/utils"
 	"fmt"
@@ -182,7 +181,19 @@ func notifyBloomFiltersToAdjacents() error {
 	return nil
 }
 
-func NeighboursFileLookup(advancedFileRequestMessage engineering.FileRequestMessage) {
+func NeighboursFileLookupWithoutFileRequest(fileName string, ttl int, requestID string, senderPeer string, forwarderPeer string, callbackServer string) {
+	fileRequest := FileRequestMessage{
+		FileName:       fileName,
+		TTL:            ttl,
+		RequestID:      requestID,
+		SenderPeer:     EdgePeer{senderPeer},
+		ForwarderPeer:  EdgePeer{forwarderPeer},
+		CallbackServer: callbackServer}
+
+	NeighboursFileLookup(fileRequest)
+}
+
+func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
@@ -190,7 +201,7 @@ func NeighboursFileLookup(advancedFileRequestMessage engineering.FileRequestMess
 	defer adjacentsMap.filtersMutex.RUnlock()
 	defer adjacentsMap.connsMutex.RUnlock()
 
-	advancedFileRequestMessage.ForwarderPeer = SelfPeer.PeerAddr
+	fileRequestMessage.ForwarderPeer = SelfPeer
 
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	contactedNum := 0
@@ -199,8 +210,8 @@ func NeighboursFileLookup(advancedFileRequestMessage engineering.FileRequestMess
 	for adj := range adjacentsMap.peerConns {
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
-			if adjFilter.Test([]byte(advancedFileRequestMessage.FileName)) {
-				contacted := contactNeighbourForFile(advancedFileRequestMessage, adj)
+			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
+				contacted := contactNeighbourForFile(fileRequestMessage, adj)
 				if contacted {
 					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr+" per filtro di Bloom")
 					contactedNum++
@@ -214,14 +225,14 @@ func NeighboursFileLookup(advancedFileRequestMessage engineering.FileRequestMess
 
 	// Contattiamo (come rimanenti) alcuni vicini a caso con i filtri negativi (tranne il mittente originario)
 	if contactedNum < maxContactable {
-		falseFiltersNeighbours := findFalseAdjacentsFilter(advancedFileRequestMessage.FileName)
+		falseFiltersNeighbours := findFalseAdjacentsFilter(fileRequestMessage.FileName)
 		for i := 0; i < (maxContactable - contactedNum); i++ {
 			if len(falseFiltersNeighbours) == 0 {
 				break
 			}
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-			contacted := contactNeighbourForFile(advancedFileRequestMessage, randomNeigh)
+			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh)
 			if contacted {
 				utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr+" per complemento")
 				contactedNum++
@@ -241,8 +252,8 @@ func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 	return falseAdjacentsList
 }
 
-func contactNeighbourForFile(advancedFileRequestMessage engineering.FileRequestMessage, adj EdgePeer) bool {
-	if adj.PeerAddr != advancedFileRequestMessage.SenderPeer {
+func contactNeighbourForFile(advancedFileRequestMessage FileRequestMessage, adj EdgePeer) bool {
+	if adj != advancedFileRequestMessage.SenderPeer {
 		adjConn := adjacentsMap.peerConns[adj]
 		adjConn.peerConnection.Go("EdgePeer.FileLookup", advancedFileRequestMessage, new(int), nil)
 		return true
