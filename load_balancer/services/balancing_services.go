@@ -19,9 +19,10 @@ var balancingServer BalancingServiceServer = BalancingServiceServer{
 	edgeServerMap:      map[EdgeServer]int{},
 	heartbeatCheckTime: time.Now(),
 	heartbeats:         map[EdgeServer](time.Time){},
+	sequenceNumber:     0,
 }
 
-func (balancingServer *BalancingServiceServer) LogClient(ctx context.Context, userInfo *proto.User) (*proto.LoginResponse, error) {
+func (balancingServer *BalancingServiceServer) LoginClient(ctx context.Context, userInfo *proto.User) (*proto.LoginResponse, error) {
 	utils.PrintEvent("CLIENT_LOGIN_ATTEMPT", fmt.Sprintf("Client '%s' is trying to Log in...", userInfo.Username))
 	return &proto.LoginResponse{Logged: login.UserLogin(userInfo.Username, userInfo.Passwd)}, nil
 }
@@ -39,7 +40,9 @@ func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, user
 	} else {
 		edgeIpAddr = ""
 	}
-	return &proto.BalancerResponse{Success: success, EdgeIpAddr: edgeIpAddr}, nil
+	newRequestId := utils.ConvertToString(balancingServer.sequenceNumber)
+	balancingServer.sequenceNumber++
+	return &proto.BalancerResponse{Success: success, EdgeIpAddr: edgeIpAddr, RequestId: newRequestId}, nil
 }
 
 func (balancingServer *BalancingServiceServer) PickEdgeServer() (ipAddr string, err error) {

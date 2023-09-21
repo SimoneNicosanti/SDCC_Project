@@ -21,4 +21,5 @@ type BalancingServiceServer struct {
 	edgeServerMap      map[EdgeServer]int
 	heartbeatCheckTime time.Time
 	heartbeats         map[EdgeServer](time.Time)
+	sequenceNumber     int64
 }

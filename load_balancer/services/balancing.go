@@ -14,10 +14,16 @@ import (
 )
 
 func ActAsBalancer() {
+	randomSequenceNum, err := utils.GenerateUniqueRandomID()
+	if err != nil {
+		randomSequenceNum = 0
+	}
+	balancingServer.sequenceNumber = randomSequenceNum
 	setupRPC()
 	setUpGRPC()
 	engineering.PutOnRedis("edoardo", "andrea")
 	utils.PrintEvent("BALANCER_STARTED", "Waiting for connections...")
+	go checkHeartbeat()
 }
 
 func setupRPC() {
@@ -27,7 +33,6 @@ func setupRPC() {
 	list, err := net.Listen("tcp", ":4321")
 	utils.ExitOnError("Impossibile mettersi in ascolto sulla porta", err)
 	go http.Serve(list, nil)
-	go checkHeartbeat()
 }
 
 func setUpGRPC() {
@@ -40,7 +45,7 @@ func setUpGRPC() {
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
-	proto.RegisterBalancingServiceServer(grpcServer, &BalancingServiceServer{})
+	proto.RegisterBalancingServiceServer(grpcServer, &balancingServer)
 	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+lis.Addr().String())
 	go grpcServer.Serve(lis)
 }

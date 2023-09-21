@@ -19,8 +19,8 @@ class BalancingServiceStub(object):
                 request_serializer=load__balancer_dot_LoadBalancer__pb2.User.SerializeToString,
                 response_deserializer=load__balancer_dot_LoadBalancer__pb2.BalancerResponse.FromString,
                 )
-        self.LogClient = channel.unary_unary(
-                '/load_balancer.BalancingService/LogClient',
+        self.LoginClient = channel.unary_unary(
+                '/load_balancer.BalancingService/LoginClient',
                 request_serializer=load__balancer_dot_LoadBalancer__pb2.User.SerializeToString,
                 response_deserializer=load__balancer_dot_LoadBalancer__pb2.LoginResponse.FromString,
                 )
@@ -35,7 +35,7 @@ class BalancingServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def LogClient(self, request, context):
+    def LoginClient(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -49,8 +49,8 @@ def add_BalancingServiceServicer_to_server(servicer, server):
                     request_deserializer=load__balancer_dot_LoadBalancer__pb2.User.FromString,
                     response_serializer=load__balancer_dot_LoadBalancer__pb2.BalancerResponse.SerializeToString,
             ),
-            'LogClient': grpc.unary_unary_rpc_method_handler(
-                    servicer.LogClient,
+            'LoginClient': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoginClient,
                     request_deserializer=load__balancer_dot_LoadBalancer__pb2.User.FromString,
                     response_serializer=load__balancer_dot_LoadBalancer__pb2.LoginResponse.SerializeToString,
             ),
@@ -82,7 +82,7 @@ class BalancingService(object):
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def LogClient(request,
+    def LoginClient(request,
             target,
             options=(),
             channel_credentials=None,
@@ -92,7 +92,7 @@ class BalancingService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/load_balancer.BalancingService/LogClient',
+        return grpc.experimental.unary_unary(request, target, '/load_balancer.BalancingService/LoginClient',
             load__balancer_dot_LoadBalancer__pb2.User.SerializeToString,
             load__balancer_dot_LoadBalancer__pb2.LoginResponse.FromString,
             options, channel_credentials,

@@ -14,7 +14,7 @@ import (
 
 var edgeServer EdgeServer
 var workload int = 0
-var balancerConnection *rpc.Client
+var balancerConnection *rpc.Client = nil
 
 func ActAsServer() {
 	cache.GetCache().StartCache()
@@ -28,13 +28,13 @@ func heartbeatToBalancer() {
 	utils.PrintEvent("HEARTBEAT_STARTED", "Inizio meccanismo di heartbeat verso il LoadBalancer")
 	HEARTBEAT_FREQUENCY := utils.GetIntEnvironmentVariable("HEARTBEAT_FREQUENCY")
 	for {
-		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 		heartbeatFunction()
+		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 	}
 }
 
 func heartbeatFunction() {
-	heartbeatMessage := HeartbeatMessage{EdgeServer: edgeServer}
+	heartbeatMessage := HeartbeatMessage{EdgeServer: edgeServer, CurrentLoad: workload}
 	if balancerConnection == nil {
 		newBalancerConnection, err := utils.ConnectToNode("load_balancer:4321")
 		if err != nil {
@@ -70,7 +70,7 @@ func notifyJobEnd() {
 		}
 		balancerConnection = newBalancerConnection
 	}
-	call := balancerConnection.Go("BalancingServer.SignalJobEnd", edgeServer, new(int), nil)
+	call := balancerConnection.Go("BalancingServiceServer.SignalJobEnd", edgeServer, new(int), nil)
 	select {
 	case <-call.Done:
 		if call.Error != nil {

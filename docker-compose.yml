@@ -68,12 +68,3 @@ services:
         #   cpus: 0.25
         #   memory: 128M
     
-
-  rabbit_mq:
-    image: rabbitmq
-    hostname: rabbit_mq
-    tty: true
-    stdin_open: true
-    networks:
-      - sdcc_network
-    

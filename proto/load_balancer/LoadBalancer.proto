@@ -5,10 +5,10 @@ option go_package = "../proto/load_balancer";
 
 service BalancingService {
     rpc GetEdge(User) returns (BalancerResponse);
-    rpc LogClient(User) returns (LoginResponse);
+    rpc LoginClient(User) returns (LoginResponse);
 }
 
-enum ErrorCodes {
+enum ErrorCodesLoadBalancer {
     OK = 0;
     NO_SERVER_AVAILABLE = 16;
 }

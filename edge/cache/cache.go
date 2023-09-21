@@ -58,8 +58,13 @@ func GetCache() *Cache {
 }
 
 func (cache *Cache) IsFileInCache(fileName string) bool {
-	_, is := cache.cachingMap[fileName]
-	return is
+	_, isInCache := cache.cachingMap[fileName]
+
+	// Ogni volta che viene richiesto il file, aumento la sua popolarità
+	if isInCache {
+		cache.incrementPopularity(fileName)
+	}
+	return isInCache
 }
 
 func (cache *Cache) GetFileSize(fileName string) int64 {
@@ -73,12 +78,25 @@ func (cache *Cache) GetFileSize(fileName string) int64 {
 	return -1
 }
 
+func (cache *Cache) printSortedList() {
+	sort.Sort(ByPopularity(cache.cachingList))
+	fmt.Print("Current Cache State {")
+	for _, file := range cache.cachingMap {
+		fmt.Printf("[%s -> %d]", file.fileName, cache.cachingMap[file.fileName].popularity)
+	}
+	fmt.Print("}\n")
+
+}
+
 //Inserisce un file all'interno della cache
 func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.RedirectionChannel, fileName string, fileSize int64) {
 	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (--> implementare login e accodare al nome del file quello dell'utenza)
 
-	// Se esiste già, incrementa la popolarità del file
-	if cache.incrementPopularity(fileName) {
+	defer cache.printSortedList()
+
+	_, isInCache := cache.cachingMap[fileName]
+	// Se esiste già, non lo inseriamo di nuovo
+	if isInCache {
 		return
 	} else {
 		if IsFileCacheable(fileSize) {
@@ -107,9 +125,11 @@ func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.Red
 func (cache *Cache) incrementPopularity(fileName string) bool {
 	file, alreadyExists := cache.cachingMap[fileName]
 	if alreadyExists {
+		cache.cacheMutex.Lock()
+		defer cache.cacheMutex.Unlock()
 		file.popularity++
-		//TODO controllare se funziona, altrimenti aggiungere questa riga di codice:
-		// cache.cachingMap[fileName] = file
+
+		cache.cachingMap[fileName] = file
 		utils.PrintEvent("POPULARITY_INCREMENTED", fmt.Sprintf("La popolarità del File '%s' è salita al valore di '%d'", fileName, file.popularity))
 		return true
 	}
@@ -142,7 +162,6 @@ func (cache *Cache) GetFileForReading(fileName string) (*os.File, error) {
 	if err != nil {
 		return nil, status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
 	}
-	cache.incrementPopularity(fileName)
 	return localFile, nil
 }
 

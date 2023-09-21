@@ -2,6 +2,8 @@ package utils
 
 import (
 	"bufio"
+	crypto_rand "crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -93,4 +95,23 @@ func GetMyIPAddr() (string, error) {
 	}
 
 	return "", fmt.Errorf("no suitable IP address found")
+}
+
+func GenerateUniqueRandomID() (int64, error) {
+	randomBytes := make([]byte, 16)
+	_, err := crypto_rand.Read(randomBytes)
+	if err != nil {
+		return 0, err
+	}
+
+	randomString := base64.URLEncoding.EncodeToString(randomBytes)[:16]
+	randomInt, err := strconv.ParseInt(randomString, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return randomInt, nil
+}
+
+func ConvertToString(num int64) string {
+	return strconv.FormatInt(num, 10)
 }

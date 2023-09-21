@@ -135,7 +135,7 @@ def login(username : str, passwd : str) -> bool :
     try:
         channel = grpc.insecure_channel("load_balancer:5432")
         stub = BalancingServiceStub(channel)
-        loginResponse:LoginResponse = stub.LogClient(userInfo)
+        loginResponse:LoginResponse = stub.LoginClient(userInfo)
         return loginResponse.logged
     except grpc.RpcError as e:
         print(e.code())
@@ -144,11 +144,8 @@ def login(username : str, passwd : str) -> bool :
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
         raise e
-    
-
 
 class FileService:
-    global request_id_list
 
     def getChunks(self, filename):
             try:
@@ -163,7 +160,6 @@ class FileService:
 
             except Exception as e:
                 print(e)
-        
 
     def readFile(self, file : io.BufferedReader):
         chunkSize = int(os.environ.get("CHUNK_SIZE"))
