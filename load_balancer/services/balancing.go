@@ -2,8 +2,8 @@ package services
 
 import (
 	"fmt"
-	"load_balancer/engineering"
 	proto "load_balancer/proto/load_balancer"
+	"load_balancer/redisDB"
 	"load_balancer/utils"
 	"net"
 	"net/http"
@@ -14,14 +14,10 @@ import (
 )
 
 func ActAsBalancer() {
-	randomSequenceNum, err := utils.GenerateUniqueRandomID()
-	if err != nil {
-		randomSequenceNum = 0
-	}
-	balancingServer.sequenceNumber = randomSequenceNum
+	balancingServer.sequenceNumber = utils.GenerateUniqueRandomID()
 	setupRPC()
 	setUpGRPC()
-	engineering.PutOnRedis("edoardo", "andrea")
+	redisDB.PutOnRedis("edoardo", "andrea")
 	utils.PrintEvent("BALANCER_STARTED", "Waiting for connections...")
 	go checkHeartbeat()
 }
@@ -66,14 +62,23 @@ func checkForDeadServers(heartbeatThr float64) {
 	lastCheckTime := balancingServer.heartbeatCheckTime
 	for edgeServer, lastHeartbeatTime := range balancingServer.heartbeats {
 		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
-			//Il edgeServer viene considerato caduto e viene rimosso
+			//L'edgeServer viene considerato caduto e viene rimosso
 			utils.PrintEvent("DEAD_EDGE_SRV_FOUND", fmt.Sprintf("Edge server '%s' è morto", edgeServer.ServerAddr))
 			_, isInMap := balancingServer.edgeServerMap[edgeServer]
 			if isInMap {
 				delete(balancingServer.edgeServerMap, edgeServer)
 			}
 			delete(balancingServer.heartbeats, edgeServer)
+			convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
 		}
 	}
 	balancingServer.heartbeatCheckTime = time.Now()
+}
+
+func convertAndPrintEdgeServerMap(edgeServerMap map[EdgeServer]int) {
+	printableMap := map[string]int{}
+	for edgeServer, currentLoad := range edgeServerMap {
+		printableMap[edgeServer.ServerAddr] = currentLoad
+	}
+	utils.PrintCustomMap(printableMap, "No edge servers...", "Edge Servers e rispettivo carico attuale", "CURRENT_EDGE_SERVERS", true)
 }

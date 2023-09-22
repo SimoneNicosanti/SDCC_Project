@@ -40,7 +40,6 @@ services:
     volumes:
       - ./load_balancer:/src
       - ./proto/load_balancer:/proto
-    working_dir : /src
     
   edge:
     build:

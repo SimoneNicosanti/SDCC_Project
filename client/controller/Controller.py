@@ -9,7 +9,7 @@ from asyncio import Semaphore
 import json, grpc, os, io
 
 data = None
-userInfo:User = User(username="a",passwd="a")
+userInfo : User = User(username="a",passwd="a")
 sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
@@ -38,8 +38,7 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
 
 def getEdgeFromBalancer() -> BalancerResponse:
     try:
-        #TODO inserire indirizzi in file configurazione
-        channel = grpc.insecure_channel("load_balancer:5432")
+        channel = grpc.insecure_channel(os.environ.get("LOAD_BALANCER_ADDR"))
         stub = BalancingServiceStub(channel)
         return stub.GetEdge(userInfo)
     except grpc.RpcError as e:
@@ -89,12 +88,11 @@ def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> boo
 
 def uploadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool :
     response : BalancerResponse
-       
+    
     try:
         # Otteniamo la size del file da inviare
         fileSize = os.path.getsize(filename = os.environ.get("FILES_PATH") + filename)
         # Dividiamo il file in chunks
-        #with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
         chunks = FileService().getChunks(filename = filename)
         # Effettuiamo la chiamata gRPC
         response = stub.Upload(
@@ -125,15 +123,21 @@ def uploadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool 
     
     return response.success
 
-def deleteFile(fileName : str) -> bool:
-    #TODO implementazione operazione di delete del file
-    pass
+def deleteFile(fileName : str, requestId : str, stub : FileServiceStub) -> bool:
+    try:
+        # Richiesta delete del file
+        response : FileResponse = stub.Delete(FileDeleteRequest(fileName = fileName, requestId = requestId))
+        return True
+    except grpc.RpcError as e:
+        print(e.code())
+        print(e.code().value)
+        print(e.details())
 
 def login(username : str, passwd : str) -> bool :
     global userInfo
     userInfo = User(username=username, passwd=passwd)
     try:
-        channel = grpc.insecure_channel("load_balancer:5432")
+        channel = grpc.insecure_channel(os.environ.get("LOAD_BALANCER_ADDR"))
         stub = BalancingServiceStub(channel)
         loginResponse:LoginResponse = stub.LoginClient(userInfo)
         return loginResponse.logged

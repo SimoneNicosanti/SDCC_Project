@@ -38,11 +38,11 @@ func ActAsPeer() {
 
 	utils.ExitOnError("[*ERROR*] -> Impossibile registrare il servizio sul registry server", err)
 	utils.PrintEvent("EDGE_SERVICE_OK", "Servizio registrato su server Registry")
-	stringAdjMap := make(map[string]byte)
+	stringAdjMap := map[string]int{}
 	for peer := range *adj {
 		stringAdjMap[peer.PeerAddr] = 0
 	}
-	utils.PrintCustomMap(stringAdjMap, "Nessun vicino a cui connettersi...", "Vicini restituiti dal server Registry", "NEIGHBOURS_RECEIVED")
+	utils.PrintCustomMap(stringAdjMap, "Nessun vicino a cui connettersi...", "Vicini restituiti dal server Registry", "NEIGHBOURS_RECEIVED", false)
 
 	go heartbeatToRegistry() //Inizio meccanismo di heartbeat verso il server Registry
 	go pingsToAdjacents()
@@ -181,19 +181,51 @@ func notifyBloomFiltersToAdjacents() error {
 	return nil
 }
 
-func NeighboursFileLookupWithoutFileRequest(fileName string, ttl int, requestID string, senderPeer string, forwarderPeer string, callbackServer string) {
-	fileRequest := FileRequestMessage{
-		FileName:       fileName,
-		TTL:            ttl,
-		RequestID:      requestID,
-		SenderPeer:     EdgePeer{senderPeer},
-		ForwarderPeer:  EdgePeer{forwarderPeer},
-		CallbackServer: callbackServer}
-
-	NeighboursFileLookup(fileRequest)
+// Funzione esposta al server per inviare la richiesta di elimazione di file
+func NotifyFileDeletion(fileName string, requestId string) error {
+	return notifyFileDeletion(FileDeleteMessage{FileRequest: FileRequest{FileName: fileName, RequestId: requestId}})
 }
 
-func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
+// Notifica a tutti i vicini positivi al test dei filtri di bloom l'eliminazione del file e inserisci il messaggio nella cache
+func notifyFileDeletion(fileDeleteMessage FileDeleteMessage) error {
+	GetFileRequestCache().AddRequestInCache(fileDeleteMessage.FileRequest)
+
+	adjacentsMap.connsMutex.RLock()
+	adjacentsMap.filtersMutex.RLock()
+	defer adjacentsMap.filtersMutex.RUnlock()
+	defer adjacentsMap.connsMutex.RUnlock()
+
+	// Contattiamo solo i vicini positivi ai filtri (tranne il mittente originario)
+	for adj := range adjacentsMap.peerConns {
+		adjFilter, isInMap := adjacentsMap.filterMap[adj]
+		if isInMap {
+			if adjFilter.Test([]byte(fileDeleteMessage.FileName)) {
+				contacted := contactNeighbourForFileDeletion(fileDeleteMessage, adj)
+				if contacted {
+					utils.PrintEvent("DELETE", "Richiesta inviata a "+adj.PeerAddr)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// Funzione esposta al server per inviare la richiesta di lookup per un file
+func NeighboursFileLookup(fileName string, ttl int, requestID string, senderPeer string, forwarderPeer string, callbackServer string) {
+	fileRequestMessage := FileLookupMessage{
+		FileRequest:    FileRequest{FileName: fileName, RequestId: requestID, ForwarderPeer: EdgePeer{forwarderPeer}},
+		TTL:            ttl,
+		CallbackServer: callbackServer}
+
+	neighboursFileLookup(fileRequestMessage)
+}
+
+// Effettua verso TOT vicini positivi al test dei filtri di bloom la richiesta di lookup e inserisci il messaggio nella cache.
+// Se i vicini positivi al filtro di bloom sono minori di TOT, verranno contattati anche vicini negativi al test dei filtri di bloom.
+func neighboursFileLookup(fileRequestMessage FileLookupMessage) {
+	// Aggiungi la richiesta nella file request cache
+	GetFileRequestCache().AddRequestInCache(fileRequestMessage.FileRequest)
 
 	adjacentsMap.connsMutex.RLock()
 	adjacentsMap.filtersMutex.RLock()
@@ -211,7 +243,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 		adjFilter, isInMap := adjacentsMap.filterMap[adj]
 		if isInMap {
 			if adjFilter.Test([]byte(fileRequestMessage.FileName)) {
-				contacted := contactNeighbourForFile(fileRequestMessage, adj)
+				contacted := contactNeighbourForFileDownload(fileRequestMessage, adj)
 				if contacted {
 					utils.PrintEvent("LOOKUP", "Richiesta inviata a "+adj.PeerAddr+" per filtro di Bloom")
 					contactedNum++
@@ -232,7 +264,7 @@ func NeighboursFileLookup(fileRequestMessage FileRequestMessage) {
 			}
 			randomInt := rand.Intn(len(falseFiltersNeighbours))
 			randomNeigh := falseFiltersNeighbours[randomInt]
-			contacted := contactNeighbourForFile(fileRequestMessage, randomNeigh)
+			contacted := contactNeighbourForFileDownload(fileRequestMessage, randomNeigh)
 			if contacted {
 				utils.PrintEvent("LOOKUP", "Richiesta inviata a "+randomNeigh.PeerAddr+" per complemento")
 				contactedNum++
@@ -252,10 +284,19 @@ func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 	return falseAdjacentsList
 }
 
-func contactNeighbourForFile(advancedFileRequestMessage FileRequestMessage, adj EdgePeer) bool {
-	if adj != advancedFileRequestMessage.SenderPeer {
+func contactNeighbourForFileDownload(fileRequestMessage FileLookupMessage, adj EdgePeer) bool {
+	if adj != fileRequestMessage.ForwarderPeer {
 		adjConn := adjacentsMap.peerConns[adj]
-		adjConn.peerConnection.Go("EdgePeer.FileLookup", advancedFileRequestMessage, new(int), nil)
+		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, new(int), nil)
+		return true
+	}
+	return false
+}
+
+func contactNeighbourForFileDeletion(deleteRequestMessage FileDeleteMessage, adj EdgePeer) bool {
+	if adj != deleteRequestMessage.ForwarderPeer {
+		adjConn := adjacentsMap.peerConns[adj]
+		adjConn.peerConnection.Go("EdgePeer.DeleteFile", deleteRequestMessage, new(int), nil)
 		return true
 	}
 	return false

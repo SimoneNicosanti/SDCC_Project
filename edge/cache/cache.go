@@ -78,21 +78,9 @@ func (cache *Cache) GetFileSize(fileName string) int64 {
 	return -1
 }
 
-func (cache *Cache) printSortedList() {
-	sort.Sort(ByPopularity(cache.cachingList))
-	fmt.Print("Current Cache State {")
-	for _, file := range cache.cachingMap {
-		fmt.Printf("[%s -> %d]", file.fileName, cache.cachingMap[file.fileName].popularity)
-	}
-	fmt.Print("}\n")
-
-}
-
 //Inserisce un file all'interno della cache
 func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.RedirectionChannel, fileName string, fileSize int64) {
-	// TODO gestire il problema per cui i file sono identificati soltanto dal nome (--> implementare login e accodare al nome del file quello dell'utenza)
-
-	defer cache.printSortedList()
+	defer convertAndPrintCachingMap(cache.cachingMap)
 
 	_, isInCache := cache.cachingMap[fileName]
 	// Se esiste già, non lo inseriamo di nuovo
@@ -199,19 +187,20 @@ func (cache *Cache) StartCache() {
 
 func (cache *Cache) cleanCachePeriodically() {
 	for {
-		time.Sleep(time.Duration(utils.GetIntEnvironmentVariable("CACHE_CLEANING_FREQUENCY")))
+		time.Sleep(time.Duration(utils.GetIntEnvironmentVariable("CACHE_CLEANING_FREQUENCY")) * time.Second)
 		cache.deleteExpiredFiles()
 	}
 }
 
 func (cache *Cache) deleteExpiredFiles() {
+	utils.PrintEvent("CACHE_PERIODICAL_CLEANING", "Inizio procedura di eliminazione dei file scaduti")
 	for _, file := range cache.cachingList {
-		if file.timestamp.Add(time.Duration(utils.GetInt64EnvironmentVariable("TIME_TO_DELETION"))).After(time.Now()) {
+		if file.timestamp.Add(time.Duration(utils.GetInt64EnvironmentVariable("TIME_TO_DELETION")) * time.Second).Before(time.Now()) {
 			cache.RemoveFileFromCache(file.fileName)
 			utils.PrintEvent("FILE_DELETED", fmt.Sprintf("Il File '%s' è stato rimosso dalla cache a seguito della procedura periodica di cleanup.", file.fileName))
-			convertAndPrintCachingMap(cache.cachingMap)
 		}
 	}
+	convertAndPrintCachingMap(cache.cachingMap)
 }
 
 func (cache *Cache) ActivateCacheRecovery() {
@@ -231,11 +220,11 @@ func (cache *Cache) ActivateCacheRecovery() {
 }
 
 func convertAndPrintCachingMap(cachingMap map[string]File) {
-	printableCacheMap := make(map[string]byte)
-	for fileName := range cachingMap {
-		printableCacheMap[fileName] = 0
+	printableCacheMap := map[string]int{}
+	for _, file := range cachingMap {
+		printableCacheMap[file.fileName] = file.popularity
 	}
-	utils.PrintCustomMap(printableCacheMap, "Nessun file in cache...", "File trovati nella cache", "CACHE_RECOVERY_OK")
+	utils.PrintCustomMap(printableCacheMap, "Nessun file in cache...", "File trovati nella cache e rispettiva popolarità attuale", "CURRENT_CACHE", true)
 }
 
 func (cache *Cache) removeFileFromQueue(file_name string) {
@@ -379,7 +368,6 @@ func writeChunksInCache(redirectionChannel redirection_channel.RedirectionChanne
 
 	// Lettura dal canale di chunks
 	for message := range redirectionChannel.MessageChannel {
-		// TODO Capire se si può portare fuori
 		if !fileCreated {
 			localFile, err = os.Create(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 			if err != nil {

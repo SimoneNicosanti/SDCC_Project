@@ -47,3 +47,11 @@ class FileResponse(_message.Message):
     requestId: str
     success: bool
     def __init__(self, requestId: _Optional[str] = ..., success: bool = ...) -> None: ...
+
+class FileDeleteRequest(_message.Message):
+    __slots__ = ["fileName", "requestId"]
+    FILENAME_FIELD_NUMBER: _ClassVar[int]
+    REQUESTID_FIELD_NUMBER: _ClassVar[int]
+    fileName: str
+    requestId: str
+    def __init__(self, fileName: _Optional[str] = ..., requestId: _Optional[str] = ...) -> None: ...

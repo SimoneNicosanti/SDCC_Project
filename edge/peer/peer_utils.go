@@ -33,12 +33,6 @@ type HeartbeatMessage struct {
 	NeighboursList map[EdgePeer]byte
 }
 
-// Attenzione alla gestione dei Mutex
-type FileRequestCache struct {
-	mutex      sync.RWMutex
-	messageMap map[FileRequestMessage](time.Time)
-}
-
 var adjacentsMap = AdjacentPeers{
 	sync.RWMutex{},
 	map[EdgePeer]AdjConnection{},

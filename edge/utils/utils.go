@@ -155,7 +155,7 @@ func PrintEvent(title string, content string) {
 	fmt.Printf(content + "\r\n\r\n")
 }
 
-func PrintCustomMap(customMap map[string]byte, ifEmpty string, ifNotEmpty string, eventMessage string) {
+func PrintCustomMap(customMap map[string]int, ifEmpty string, ifNotEmpty string, eventMessage string, hasValue bool) {
 	listString := ""
 	howMany := len(customMap)
 	currentItemsNum := 0
@@ -163,8 +163,12 @@ func PrintCustomMap(customMap map[string]byte, ifEmpty string, ifNotEmpty string
 		listString = ifEmpty
 	} else {
 		listString = ifNotEmpty + ":\r\n"
-		for item := range customMap {
-			listString += "[*] " + item
+		for item, value := range customMap {
+			if hasValue {
+				listString += "[*] " + item + " : " + fmt.Sprint(value)
+			} else {
+				listString += "[*] " + item
+			}
 			currentItemsNum++
 			if currentItemsNum < howMany {
 				listString += "\r\n"

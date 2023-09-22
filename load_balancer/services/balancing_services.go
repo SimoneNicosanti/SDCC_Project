@@ -28,7 +28,7 @@ func (balancingServer *BalancingServiceServer) LoginClient(ctx context.Context, 
 }
 
 func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, userInfo *proto.User) (*proto.BalancerResponse, error) {
-	utils.PrintEvent("GET_EDGE_SERVER", "Received message, taking edge server with minimum load")
+	utils.PrintEvent("GET_EDGE_SERVER", fmt.Sprintf("Request from user '%s', taking edge server with minimum load", userInfo.Username))
 	success := login.UserLogin(userInfo.Username, userInfo.Passwd)
 	var edgeIpAddr string
 	var err error
@@ -62,7 +62,7 @@ func (balancingServer *BalancingServiceServer) PickEdgeServer() (ipAddr string, 
 	return minLoadEdge.ServerAddr, nil
 }
 
-func (balancingServer *BalancingServiceServer) SignalJobEnd(edgeServer EdgeServer, returnPtr *int) error {
+func (balancingServer *BalancingServiceServer) NotifyJobEnd(edgeServer EdgeServer, returnPtr *int) error {
 	*returnPtr = 0
 
 	balancingServer.mapMutex.Lock()
@@ -86,6 +86,7 @@ func (balancingServer *BalancingServiceServer) Heartbeat(heartbeatMessage Heartb
 	if !isInMap {
 		utils.PrintEvent("ACTIVE_EDGE_SERVER_FOUND", fmt.Sprintf("Edge Server '%s' è attivo!", edgeServer.ServerAddr))
 		balancingServer.edgeServerMap[edgeServer] = heartbeatMessage.CurrentLoad
+		convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
 	}
 
 	balancingServer.heartbeats[edgeServer] = time.Now()

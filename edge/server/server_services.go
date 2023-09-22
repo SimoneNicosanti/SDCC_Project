@@ -21,15 +21,27 @@ import (
 	status "google.golang.org/grpc/status"
 )
 
-func (s *FileServiceServer) Delete() error {
+func (s *FileServiceServer) Delete(ctx context.Context, fileDeleteRequest *file_transfer.FileDeleteRequest) (*file_transfer.FileResponse, error) {
 	s.incrementWorkload()
-	returnValue := doDelete()
+	returnValue := doDelete(fileDeleteRequest)
 	s.decrementWorkload()
-	return returnValue
+	return &file_transfer.FileResponse{Success: returnValue == nil, RequestId: fileDeleteRequest.RequestId}, returnValue //TODO ritorna errore grpc
 }
 
-func doDelete() error {
-	//TODO
+func doDelete(fileDeleteRequest *file_transfer.FileDeleteRequest) error {
+	defer notifyJobEnd()
+	//TODO distinguere errori per inviarli al client correttamente
+	if cache.GetCache().IsFileInCache(fileDeleteRequest.FileName) {
+		cache.GetCache().RemoveFileFromCache(fileDeleteRequest.FileName)
+	}
+	err := s3_boundary.DeleteFromS3(fileDeleteRequest.FileName)
+	if err != nil {
+		return err
+	}
+	err = peer.NotifyFileDeletion(fileDeleteRequest.FileName, fileDeleteRequest.RequestId)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -41,10 +53,9 @@ func (s *FileServiceServer) Upload(uploadStream file_transfer.FileService_Upload
 }
 
 func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
-	// Apri il file locale dove verranno scritti i chunks
 	defer notifyJobEnd()
 
-	requestID, fileName, fileSize, err := retrieveMetadata(uploadStream)
+	requestID, fileName, fileSize, err := retrieveMetadata(uploadStream.Context())
 	if err != nil {
 		return err
 	}
@@ -80,8 +91,8 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 	return nil
 }
 
-func retrieveMetadata(uploadStream file_transfer.FileService_UploadServer) (requestID string, file_name string, file_size int64, err error) {
-	md, thereIsMetadata := metadata.FromIncomingContext(uploadStream.Context())
+func retrieveMetadata(context context.Context) (requestID string, file_name string, file_size int64, err error) {
+	md, thereIsMetadata := metadata.FromIncomingContext(context)
 	if !thereIsMetadata {
 		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
 	}
@@ -185,7 +196,7 @@ func redirectFromS3(fileName string, downloadStream file_transfer.FileService_Do
 // Invia richieste di lookup ad alcuni dei tuoi vicini. Ritorna un channel dal quale possono essere lette le risposte alla file lookup.
 func lookupFileInNetwork(lookupServer *peer.LookupServer, requestMessage *file_transfer.FileDownloadRequest) chan *peer.FileLookupResponse {
 
-	peer.NeighboursFileLookupWithoutFileRequest(
+	peer.NeighboursFileLookup(
 		requestMessage.FileName,
 		utils.GetIntEnvironmentVariable("REQUEST_TTL"),
 		requestMessage.RequestId,

@@ -70,7 +70,7 @@ func notifyJobEnd() {
 		}
 		balancerConnection = newBalancerConnection
 	}
-	call := balancerConnection.Go("BalancingServiceServer.SignalJobEnd", edgeServer, new(int), nil)
+	call := balancerConnection.Go("BalancingServiceServer.NotifyJobEnd", edgeServer, new(int), nil)
 	select {
 	case <-call.Done:
 		if call.Error != nil {

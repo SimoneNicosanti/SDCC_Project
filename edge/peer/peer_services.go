@@ -29,6 +29,15 @@ type PeerFileServer struct {
 	IpAddr string
 }
 
+func (p *EdgePeer) DeleteFile(fileDeleteMessage FileDeleteMessage, returnPtr *int) error {
+	*returnPtr = 0
+	if cache.GetCache().IsFileInCache(fileDeleteMessage.FileName) {
+		cache.GetCache().RemoveFileFromCache(fileDeleteMessage.FileName)
+	}
+	notifyFileDeletion(fileDeleteMessage)
+	return nil
+}
+
 func (p *EdgePeer) Ping(edgePeer EdgePeer, returnPtr *int) error {
 	//utils.PrintEvent("PING_RECEIVED", "Ping Ricevuto da "+edgePeer.PeerAddr)
 	*returnPtr = 0
@@ -85,28 +94,27 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 	return nil
 }
 
-func (p *EdgePeer) FileLookup(fileRequestMessage FileRequestMessage, returnPtr *int) error {
+func (p *EdgePeer) FileLookup(fileRequestMessage FileLookupMessage, returnPtr *int) error {
 	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 	//Se la richiesta è già stata servita una volta, la ignoriamo
-	if GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage) {
-		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestID+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
+	if GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage.FileRequest) {
+		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
-
-	//Aggiungiamo la richiesta in cache e proviamo a soddisfarla
-	GetFileRequestCache().AddRequestInCache(fileRequestMessage)
 
 	fileRequestMessage.TTL--
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/
 		if fileRequestMessage.TTL > 0 {
 			utils.PrintEvent("LOOKUP_CONTINUE", fmt.Sprintf("Il File '%s' non è stato trovato in memoria. La richiesta viene inoltrata ad eventuali vicini", fileRequestMessage.FileName))
-			NeighboursFileLookup(fileRequestMessage)
+			neighboursFileLookup(fileRequestMessage)
 		} else {
 			// TTL <= 0 -> non propago la richiesta e non l'ho trovato --> fine corsa :')
 			utils.PrintEvent("LOOKUP_END", fmt.Sprintf("Il File '%s' non è stato trovato. Il TTL della richiesta è pari a zero: la richiesta non verrà propagata", fileRequestMessage.FileName))
 			return fmt.Errorf("[*LOOKUP_END*] -> Il File richiesto non è stato trovato")
 		}
 	} else { //file FOUND in local memory --> i have it! ;)
+		//Aggiungiamo la richiesta in cache e proviamo a soddisfarla
+		GetFileRequestCache().AddRequestInCache(fileRequestMessage.FileRequest)
 		utils.PrintEvent("LOOKUP_HIT", fmt.Sprintf("Il File '%s' è stato trovato in memoria", fileRequestMessage.FileName))
 		callbackServer, err := ConnectToLookupServer(fileRequestMessage.CallbackServer)
 		if err != nil {

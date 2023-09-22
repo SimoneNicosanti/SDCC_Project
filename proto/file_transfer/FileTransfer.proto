@@ -6,7 +6,7 @@ option go_package = "../proto/file_transfer";
 service FileService {
     rpc Download(FileDownloadRequest) returns (stream FileChunk);
     rpc Upload(stream FileChunk) returns (FileResponse);
-    // rpc Delete(FileDeleteRequest) returns (FileDeleteResponse)
+    rpc Delete(FileDeleteRequest) returns (FileResponse);
 }
 
 service EdgeFileService {
@@ -38,3 +38,9 @@ message FileResponse {
     string requestId = 1;
     bool success = 2;
 }
+
+message FileDeleteRequest {
+    string fileName = 1;
+    string requestId = 2;
+}
+

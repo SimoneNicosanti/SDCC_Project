@@ -6,53 +6,60 @@ import (
 	"time"
 )
 
-type FileRequestMessage struct {
-	FileName       string
+type FileRequest struct {
+	FileName      string
+	RequestId     string
+	ForwarderPeer EdgePeer
+}
+
+type FileLookupMessage struct {
+	FileRequest
 	TTL            int
-	RequestID      string
 	CallbackServer string
-	SenderPeer     EdgePeer
-	ForwarderPeer  EdgePeer
+}
+
+type FileDeleteMessage struct {
+	FileRequest
 }
 
 // Attenzione alla gestione dei Mutex
 type RequestCache struct {
 	mutex      sync.RWMutex
-	requestMap map[FileRequestMessage](time.Time)
+	requestMap map[FileRequest](time.Time)
 }
 
 var requestCache = RequestCache{
 	sync.RWMutex{},
-	map[FileRequestMessage]time.Time{},
+	map[FileRequest]time.Time{},
 }
 
 func GetFileRequestCache() *RequestCache {
 	return &requestCache
 }
 
-func (requestCache *RequestCache) AddRequestInCache(request FileRequestMessage) {
+func (requestCache *RequestCache) AddRequestInCache(request FileRequest) {
 	requestCache.mutex.Lock()
 	defer requestCache.mutex.Unlock()
 
 	requestCache.requestMap[request] = time.Now()
 }
 
-func (requestCache *RequestCache) IsRequestAlreadyServed(fileRequestMessage FileRequestMessage) bool {
+func (requestCache *RequestCache) IsRequestAlreadyServed(fileRequest FileRequest) bool {
 	requestCache.mutex.Lock()
 	defer requestCache.mutex.Unlock()
 
 	var success bool = false
-	var requestToDelete []FileRequestMessage = []FileRequestMessage{}
+	var requestToDelete []FileRequest = []FileRequest{}
 
 	for request, ttl := range requestCache.requestMap {
 		var expirationTime time.Time = ttl.Add(time.Duration(utils.GetInt64EnvironmentVariable("REQUEST_CACHE_TTL")))
 		if time.Now().After(expirationTime) {
 			requestToDelete = append(requestToDelete, request)
-		} else if request.RequestID == fileRequestMessage.RequestID && request.FileName == fileRequestMessage.FileName {
+		} else if request.RequestId == fileRequest.RequestId && request.FileName == fileRequest.FileName {
 			success = true
 		}
 	}
-	requestCache.requestMap[fileRequestMessage] = time.Now()
+	requestCache.requestMap[fileRequest] = time.Now()
 
 	// Eliminazione delle richieste scadute dalla cache (è improbabile che le riceveremo nuovamente)
 	for _, request := range requestToDelete {

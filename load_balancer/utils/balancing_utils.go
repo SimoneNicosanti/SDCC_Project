@@ -2,11 +2,12 @@ package utils
 
 import (
 	"bufio"
-	crypto_rand "crypto/rand"
-	"encoding/base64"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"math/big"
 	"net"
 	"os"
 	"strconv"
@@ -97,21 +98,41 @@ func GetMyIPAddr() (string, error) {
 	return "", fmt.Errorf("no suitable IP address found")
 }
 
-func GenerateUniqueRandomID() (int64, error) {
-	randomBytes := make([]byte, 16)
-	_, err := crypto_rand.Read(randomBytes)
-	if err != nil {
-		return 0, err
-	}
+func GenerateUniqueRandomID() int64 {
+	max := big.NewInt(math.MaxInt64)
 
-	randomString := base64.URLEncoding.EncodeToString(randomBytes)[:16]
-	randomInt, err := strconv.ParseInt(randomString, 10, 64)
+	// Generate a random integer in the range [0, max)
+	randomInt, err := rand.Int(rand.Reader, max)
 	if err != nil {
-		return 0, err
+		return 0
 	}
-	return randomInt, nil
+	randomInt64 := randomInt.Int64()
+	return randomInt64
 }
 
 func ConvertToString(num int64) string {
 	return strconv.FormatInt(num, 10)
+}
+
+func PrintCustomMap(customMap map[string]int, ifEmpty string, ifNotEmpty string, eventMessage string, hasValue bool) {
+	listString := ""
+	howMany := len(customMap)
+	currentItemsNum := 0
+	if howMany == 0 {
+		listString = ifEmpty
+	} else {
+		listString = ifNotEmpty + ":\r\n"
+		for item, value := range customMap {
+			if hasValue {
+				listString += "[*] " + item + " : " + fmt.Sprint(value)
+			} else {
+				listString += "[*] " + item
+			}
+			currentItemsNum++
+			if currentItemsNum < howMany {
+				listString += "\r\n"
+			}
+		}
+	}
+	PrintEvent(eventMessage, listString)
 }
