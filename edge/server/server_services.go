@@ -275,7 +275,7 @@ func sendFromLocalCache(fileName string, clientDownloadStream file_transfer.File
 
 // Recupera il file dalla cache locale e ne legge i chunk inviandoli sul canale dato in input
 func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
-	utils.PrintEvent("CACHE", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
+	utils.PrintEvent("CACHE_HIT", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
 	localFile, err := cache.GetCache().GetFileForReading(fileName)
 	if err != nil {
 		utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile aprire il file '%s'.", fileName))

@@ -4,6 +4,7 @@ import (
 	"edge/cache"
 	"edge/proto/file_transfer"
 	"edge/utils"
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -18,7 +19,7 @@ var balancerConnection *rpc.Client = nil
 
 func ActAsServer() {
 	cache.GetCache().StartCache()
-	setUpGRPCForFileTransfer()
+	setUpGRPCForClients()
 	go heartbeatToBalancer()
 	var forever chan struct{}
 	<-forever
@@ -87,19 +88,18 @@ func notifyJobEnd() {
 	}
 }
 
-func setUpGRPCForFileTransfer() {
+func setUpGRPCForClients() {
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to retrieve server IP address", err)
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> impossibile ottenere l'indirizzo ip per l'edge server", err)
 	lis, err := net.Listen("tcp", ipAddr+":0")
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen on endpoint", err)
 	//Otteniamo l'indirizzo usato
 	edgeServer = EdgeServer{lis.Addr().String()}
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen", err)
+	utils.ExitOnError(fmt.Sprintf("[*GRPC_SETUP_ERROR*] -> impossibile mettersi in ascolto sull'indirizzo '%s'", lis.Addr().String()), err)
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
 	file_transfer.RegisterFileServiceServer(grpcServer, &FileServiceServer{})
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+edgeServer.ServerAddr)
+	utils.PrintEvent("GRPC_EDGESERVER_STARTED", "Il server GRPC per file transfer è iniziato : "+edgeServer.ServerAddr)
 	go grpcServer.Serve(lis)
 }

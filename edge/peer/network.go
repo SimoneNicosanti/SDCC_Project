@@ -3,7 +3,6 @@ package peer
 import (
 	"edge/utils"
 	"fmt"
-	"log"
 	"net/rpc"
 	"time"
 )
@@ -89,14 +88,12 @@ func heartbeatFunction() {
 	select {
 	case <-call.Done:
 		if call.Error != nil {
-			utils.PrintEvent("HEARTBEAT_ERROR", "Invio di heartbeat al Registry fallito")
-			log.Println(call.Error.Error())
+			utils.PrintEvent("HEARTBEAT_ERROR", fmt.Sprintf("Invio di heartbeat al Registry fallito\r\nErrore: '%s'", call.Error.Error()))
 			registryClient.Close()
 			registryClient = nil
 		}
 	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
-		utils.PrintEvent("HEARTBEAT_ERROR", "Timer scaduto.. Impossibile contattare il registry")
-		log.Println(call.Error.Error())
+		utils.PrintEvent("HEARTBEAT_ERROR", fmt.Sprintf("Timer scaduto.. Impossibile contattare il registry.\r\nErrore: '%s'", call.Error.Error()))
 		registryClient.Close()
 		registryClient = nil
 	}

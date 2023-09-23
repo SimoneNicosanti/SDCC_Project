@@ -29,7 +29,7 @@ func ActAsPeer() {
 	utils.ExitOnError(errorMessage, err)
 	utils.PrintEvent("SERVER_SERVICE_OK", "Servizio registrato correttamente")
 
-	registerGRPC()
+	setupGRPCForOtherEdges()
 
 	//Connessione al server Registry per l'inserimento nella rete
 	adj := new(map[EdgePeer]byte)
@@ -57,15 +57,15 @@ func ActAsPeer() {
 }
 
 // Registra il server gRPC per ricevere le richieste di trasferimento file dagli edge
-func registerGRPC() {
+func setupGRPCForOtherEdges() {
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError("[*ERROR*] -> failed to retrieve server IP address", err)
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> impossibile ottenere l'indirizzo ip per l'edge peer", err)
 
 	serverEndpoint := ipAddr + ":0"
 	lis, err := net.Listen("tcp", serverEndpoint)
 	//Otteniamo l'indirizzo usato
 	serverEndpoint = lis.Addr().String()
-	utils.ExitOnError("[*ERROR*] -> failed to listen", err)
+	utils.ExitOnError(fmt.Sprintf("[*GRPC_SETUP_ERROR*] -> impossibile mettersi in ascolto sull'indirizzo '%s'", lis.Addr().String()), err)
 
 	opts := []grpc.ServerOption{
 		grpc.MaxSendMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
@@ -73,8 +73,7 @@ func registerGRPC() {
 	peerFileServer = PeerFileServer{IpAddr: serverEndpoint}
 	grpcServer := grpc.NewServer(opts...)
 	file_transfer.RegisterEdgeFileServiceServer(grpcServer, &peerFileServer)
-
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in peer with endpoint : "+SelfPeer.PeerAddr)
+	utils.PrintEvent("GRPC_EDGESERVER_STARTED", "Il server GRPC per file transfer è iniziato : "+SelfPeer.PeerAddr)
 	go grpcServer.Serve(lis)
 }
 
@@ -233,8 +232,6 @@ func neighboursFileLookup(fileRequestMessage FileLookupMessage) {
 	defer adjacentsMap.filtersMutex.RUnlock()
 	defer adjacentsMap.connsMutex.RUnlock()
 
-	fileRequestMessage.ForwarderPeer = SelfPeer
-
 	maxContactable := utils.GetIntEnvironmentVariable("MAX_CONTACTABLE_ADJ")
 	contactedNum := 0
 
@@ -287,6 +284,7 @@ func findFalseAdjacentsFilter(fileName string) []EdgePeer {
 func contactNeighbourForFileDownload(fileRequestMessage FileLookupMessage, adj EdgePeer) bool {
 	if adj != fileRequestMessage.ForwarderPeer {
 		adjConn := adjacentsMap.peerConns[adj]
+		fileRequestMessage.ForwarderPeer = SelfPeer
 		adjConn.peerConnection.Go("EdgePeer.FileLookup", fileRequestMessage, new(int), nil)
 		return true
 	}
@@ -296,6 +294,7 @@ func contactNeighbourForFileDownload(fileRequestMessage FileLookupMessage, adj E
 func contactNeighbourForFileDeletion(deleteRequestMessage FileDeleteMessage, adj EdgePeer) bool {
 	if adj != deleteRequestMessage.ForwarderPeer {
 		adjConn := adjacentsMap.peerConns[adj]
+		deleteRequestMessage.ForwarderPeer = SelfPeer
 		adjConn.peerConnection.Go("EdgePeer.DeleteFile", deleteRequestMessage, new(int), nil)
 		return true
 	}

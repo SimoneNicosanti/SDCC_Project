@@ -52,7 +52,7 @@ func (requestCache *RequestCache) IsRequestAlreadyServed(fileRequest FileRequest
 	var requestToDelete []FileRequest = []FileRequest{}
 
 	for request, ttl := range requestCache.requestMap {
-		var expirationTime time.Time = ttl.Add(time.Duration(utils.GetInt64EnvironmentVariable("REQUEST_CACHE_TTL")))
+		var expirationTime time.Time = ttl.Add(time.Duration(utils.GetInt64EnvironmentVariable("REQUEST_CACHE_TTL")) * time.Second)
 		if time.Now().After(expirationTime) {
 			requestToDelete = append(requestToDelete, request)
 		} else if request.RequestId == fileRequest.RequestId && request.FileName == fileRequest.FileName {

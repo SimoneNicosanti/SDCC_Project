@@ -36,6 +36,8 @@ RAGIONIAMO
 ============================================
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
+x-1]//TODO AGGIUNGERE NOME FILE _ NOME UTENTE !!
+x] vedere se mandare filtri di bloom al load_balancer per invio di richieste più efficiente
 N-1] testing
         test rispetto a situazione di base (solo cloud)
         test molte get / test intermedio / test molte put (box plot su tempi di risposta)

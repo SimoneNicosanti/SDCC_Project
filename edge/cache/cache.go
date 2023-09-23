@@ -33,22 +33,22 @@ type File struct {
 }
 
 //implementazione sort.Interface per l'ordinamento dei file per popolarità crescente
-type ByPopularity []File
+type ByPopularity []*File
 
 func (f ByPopularity) Len() int           { return len(f) }
 func (f ByPopularity) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 func (f ByPopularity) Less(i, j int) bool { return f[i].popularity < f[j].popularity }
 
 type Cache struct {
-	cachingList        []File
-	cachingMap         map[string]File
+	cachingList        []*File
+	cachingMap         map[string]*File
 	cacheMutex         sync.RWMutex
 	fileInsertionMutex sync.RWMutex
 }
 
 var selfCache Cache = Cache{
-	cachingList:        []File{},
-	cachingMap:         map[string]File{},
+	cachingList:        []*File{},
+	cachingMap:         map[string]*File{},
 	cacheMutex:         sync.RWMutex{},
 	fileInsertionMutex: sync.RWMutex{},
 }
@@ -57,9 +57,9 @@ func GetCache() *Cache {
 	return &selfCache
 }
 
+// Controlla se il file è in cache e restituisce un booleano di conseguenza. Inoltre, se è già presente aumenta la sua popolarità.
 func (cache *Cache) IsFileInCache(fileName string) bool {
 	_, isInCache := cache.cachingMap[fileName]
-
 	// Ogni volta che viene richiesto il file, aumento la sua popolarità
 	if isInCache {
 		cache.incrementPopularity(fileName)
@@ -87,25 +87,23 @@ func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.Red
 	if isInCache {
 		return
 	} else {
-		if IsFileCacheable(fileSize) {
-			// Usiamo un diverso mutex per evitare che tutta la cache sia in blocco in caso di scrittura di un file. L'importante è che non ci siano scritture concorrenti
-			cache.fileInsertionMutex.Lock()
-			defer cache.fileInsertionMutex.Unlock()
+		// Usiamo un diverso mutex per evitare che tutta la cache sia in blocco in caso di scrittura di un file. L'importante è che non ci siano scritture concorrenti
+		cache.fileInsertionMutex.Lock()
+		defer cache.fileInsertionMutex.Unlock()
 
-			// SEZIONE CRITICA: soltanto un thread per volta può accedere a questa sezione altrimenti potrebbero esserci problemi durante l'eliminazione dei file
-			err := cache.freeSpaceForInsert(fileSize)
-			if err != nil {
-				utils.PrintEvent("CACHE_SPACE_RELEASE_FAILURE", fmt.Sprintf("Errore durante la liberazione dello spazio in cache.\r\nL'errore è '%s'", err.Error()))
-				return
-			}
-			err = writeChunksInCache(redirectionChannel, fileName)
-			if err != nil {
-				utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
-				return
-			}
-			cache.insertFileInQueue(fileName, fileSize, 1)
-			// FINE DELLA SEZIONE CRITICA-------------------------------------------------------------------------------------------------------------------------
+		// SEZIONE CRITICA: soltanto un thread per volta può accedere a questa sezione altrimenti potrebbero esserci problemi durante l'eliminazione dei file
+		err := cache.freeSpaceForInsert(fileSize)
+		if err != nil {
+			utils.PrintEvent("CACHE_SPACE_RELEASE_FAILURE", fmt.Sprintf("Errore durante la liberazione dello spazio in cache.\r\nL'errore è '%s'", err.Error()))
+			return
 		}
+		err = writeChunksInCache(redirectionChannel, fileName)
+		if err != nil {
+			utils.PrintEvent("CACHE_WRITE_FAILURE", fmt.Sprintf("Errore durante la scrittura in cache.\r\nL'errore è '%s'", err.Error()))
+			return
+		}
+		cache.insertFileInQueue(fileName, fileSize, 1)
+		// FINE DELLA SEZIONE CRITICA-------------------------------------------------------------------------------------------------------------------------
 	}
 }
 
@@ -115,9 +113,7 @@ func (cache *Cache) incrementPopularity(fileName string) bool {
 	if alreadyExists {
 		cache.cacheMutex.Lock()
 		defer cache.cacheMutex.Unlock()
-		file.popularity++
-
-		cache.cachingMap[fileName] = file
+		(*file).popularity++
 		utils.PrintEvent("POPULARITY_INCREMENTED", fmt.Sprintf("La popolarità del File '%s' è salita al valore di '%d'", fileName, file.popularity))
 		return true
 	}
@@ -128,11 +124,20 @@ func (cache *Cache) insertFileInQueue(fileName string, fileSize int64, filePopul
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
 
-	newFile := File{fileName, fileSize, time.Now(), 1}
-	// Inserimento del file nella mappa
-	cache.cachingMap[fileName] = newFile
-	// Inserimento del file nella coda
-	cache.cachingList = append(cache.cachingList, newFile)
+	file, isInCahce := cache.cachingMap[fileName]
+
+	// In caso di richieste concorrenti è possibile che venga richiesto uno stesso file più volte.
+	// Questo controllo impedisce che il file venga inserito più volte nella lista.
+	if !isInCahce {
+		newFile := File{fileName, fileSize, time.Now(), 1}
+		// Inserimento del file nella mappa
+		cache.cachingMap[fileName] = &newFile
+		// Inserimento del file nella coda
+		cache.cachingList = append(cache.cachingList, &newFile)
+	} else {
+		// Se il file è stato già inserito in una richiesta concorrente, allora aumentiamo la sua popolarità.
+		(*file).popularity++
+	}
 }
 
 func (cache *Cache) RemoveFileFromCache(fileName string) {
@@ -158,7 +163,6 @@ func removeWithLocks(fileName string) error {
 	filePath := utils.GetEnvironmentVariable("FILES_PATH") + fileName
 	file, err := os.OpenFile(filePath, os.O_WRONLY, 0666)
 	if err != nil {
-		fmt.Println("Errore durante l'apertura del file: ", err)
 		return err
 	}
 	defer file.Close()
@@ -219,7 +223,7 @@ func (cache *Cache) ActivateCacheRecovery() {
 	convertAndPrintCachingMap(cache.cachingMap)
 }
 
-func convertAndPrintCachingMap(cachingMap map[string]File) {
+func convertAndPrintCachingMap(cachingMap map[string]*File) {
 	printableCacheMap := map[string]int{}
 	for _, file := range cachingMap {
 		printableCacheMap[file.fileName] = file.popularity
@@ -262,10 +266,11 @@ func (cache *Cache) freeSpaceForInsert(fileSize int64) error {
 //Controlla inoltre se tra i file scelti è possibile risparmiarne qualcuno minimizzando il numero di eliminazioni.
 func (cache *Cache) chooseAndDeleteFiles(memoryRequired int64) error {
 	var memoryCount int64 = 0
-	var utilityFilesToDelete []File
+	var utilityFilesToDelete []*File
 
 	cache.cacheMutex.Lock()
 	defer cache.cacheMutex.Unlock()
+
 	// SEZIONE CRITICA: Accediamo ai file in cache per eliminarli -------------------------------------
 
 	// Seleziona i file con popolarità più bassa
@@ -283,7 +288,7 @@ func (cache *Cache) chooseAndDeleteFiles(memoryRequired int64) error {
 	}
 
 	var index int = len(utilityFilesToDelete) - 1
-	var finalFilesToDelete []File
+	var finalFilesToDelete []*File
 
 	// Controlla se è possibile evitare l'eliminazione di qualche file a partire da quelli con popolarità più alta
 	for index > 0 {

@@ -30,6 +30,7 @@ type PeerFileServer struct {
 }
 
 func (p *EdgePeer) DeleteFile(fileDeleteMessage FileDeleteMessage, returnPtr *int) error {
+	utils.PrintEvent("DELETE_FILE", fmt.Sprintf("Ricevuta notifica di rimozione del file '%s' dall'edge '%s' \r\nReqestId:'%s'", fileDeleteMessage.FileName, fileDeleteMessage.ForwarderPeer.PeerAddr, fileDeleteMessage.RequestId))
 	*returnPtr = 0
 	if cache.GetCache().IsFileInCache(fileDeleteMessage.FileName) {
 		cache.GetCache().RemoveFileFromCache(fileDeleteMessage.FileName)
@@ -95,12 +96,13 @@ func (p *EdgePeer) GetNeighbours(none int, returnPtr *map[EdgePeer]byte) error {
 }
 
 func (p *EdgePeer) FileLookup(fileRequestMessage FileLookupMessage, returnPtr *int) error {
-	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
+
 	//Se la richiesta è già stata servita una volta, la ignoriamo
 	if GetFileRequestCache().IsRequestAlreadyServed(fileRequestMessage.FileRequest) {
 		utils.PrintEvent("LOOKUP_ABORT", "La richiesta relativa al ticket '"+fileRequestMessage.RequestId+"' è stata già servita.\r\nLa nuova richiesta verrà pertanto ignorata.")
 		return fmt.Errorf("[*LOOKUP_ABORT*] -> Richiesta già servita")
 	}
+	utils.PrintEvent("LOOKUP_RECEIVED", "Richiesta ricevuta da "+fileRequestMessage.ForwarderPeer.PeerAddr)
 
 	fileRequestMessage.TTL--
 	if !cache.GetCache().IsFileInCache(fileRequestMessage.FileName) { //file NOT FOUND in local memory :/

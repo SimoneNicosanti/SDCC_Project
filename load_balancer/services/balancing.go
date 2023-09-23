@@ -5,6 +5,7 @@ import (
 	proto "load_balancer/proto/load_balancer"
 	"load_balancer/redisDB"
 	"load_balancer/utils"
+	"math"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -17,8 +18,9 @@ func ActAsBalancer() {
 	balancingServer.sequenceNumber = utils.GenerateUniqueRandomID()
 	setupRPC()
 	setUpGRPC()
-	redisDB.PutOnRedis("edoardo", "andrea")
-	utils.PrintEvent("BALANCER_STARTED", "Waiting for connections...")
+	redisDB.PutOnRedis("edoardo", "edoardo")
+	redisDB.PutOnRedis("andrea", "andrea")
+	utils.PrintEvent("BALANCER_STARTED", "Aspettando connessioni...")
 	go checkHeartbeat()
 }
 
@@ -33,16 +35,15 @@ func setupRPC() {
 
 func setUpGRPC() {
 	ipAddr, err := utils.GetMyIPAddr()
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to retrieve balancer IP address", err)
+	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> Impossibile ottenere l'indirizzo IP del load balancer", err)
 	lis, err := net.Listen("tcp", ipAddr+":5432")
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen on endpoint", err)
-	utils.ExitOnError("[*GRPC_SETUP_ERROR*] -> failed to listen", err)
+	utils.ExitOnError(fmt.Sprintf("[*GRPC_SETUP_ERROR*] -> Impossibile mettersi in ascolto sull'indirizzo '%s'", lis.Addr().String()), err)
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(utils.GetIntEnvironmentVariable("MAX_GRPC_MESSAGE_SIZE")), // Imposta la nuova dimensione massima
 	}
 	grpcServer := grpc.NewServer(opts...)
 	proto.RegisterBalancingServiceServer(grpcServer, &balancingServer)
-	utils.PrintEvent("GRPC_SERVER_STARTED", "Grpc server started in server with endpoint : "+lis.Addr().String())
+	utils.PrintEvent("GRPC_SERVER_STARTED", "Il server GRPC è stato avviato all'indirizzo : "+lis.Addr().String())
 	go grpcServer.Serve(lis)
 }
 
@@ -73,6 +74,24 @@ func checkForDeadServers(heartbeatThr float64) {
 		}
 	}
 	balancingServer.heartbeatCheckTime = time.Now()
+}
+
+func (balancingServer *BalancingServiceServer) pickEdgeServer() (ipAddr string, err error) {
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
+	if len(balancingServer.edgeServerMap) == 0 {
+		return "", fmt.Errorf("non ci sono edge servers disponibili")
+	}
+	var minLoadEdge EdgeServer
+	var minLoadValue = math.MaxInt
+	for edgeServer, serverLoad := range balancingServer.edgeServerMap {
+		if serverLoad < minLoadValue {
+			minLoadEdge = edgeServer
+			minLoadValue = serverLoad
+		}
+	}
+	balancingServer.edgeServerMap[minLoadEdge] = balancingServer.edgeServerMap[minLoadEdge] + 1
+	return minLoadEdge.ServerAddr, nil
 }
 
 func convertAndPrintEdgeServerMap(edgeServerMap map[EdgeServer]int) {
