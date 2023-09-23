@@ -79,13 +79,13 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 
 	if err != nil {
 		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nRequest ID: '%s'", fileName, requestID))
-		return status.Error(codes.Code(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
+		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
 	}
 	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nRequest ID: '%s'", fileName, requestID))
 	response := file_transfer.FileResponse{RequestId: requestID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
-		return status.Error(codes.Code(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
+		return NewCustomError(int32(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
 	}
 
 	return nil
@@ -94,6 +94,7 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 func retrieveMetadata(context context.Context) (requestID string, file_name string, file_size int64, err error) {
 	md, thereIsMetadata := metadata.FromIncomingContext(context)
 	if !thereIsMetadata {
+
 		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
 	}
 	requestID = md.Get("request_id")[0]
@@ -139,7 +140,7 @@ func doDownload(requestMessage *file_transfer.FileDownloadRequest, downloadStrea
 			err := redirectFromS3(requestMessage.FileName, downloadStream)
 			if err != nil {
 				utils.PrintEvent("S3_DOWNLOAD_ERROR", err.Error())
-				return status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Impossibile recuperare il file '%s' dal bucket specificato.\r\nError: '%s'", requestMessage.FileName, err.Error()))
+				return NewCustomError(int32(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] -> Impossibile recuperare il file '%s' dal bucket specificato.\r\nError: '%s'", requestMessage.FileName, err.Error()))
 			}
 		}
 	}

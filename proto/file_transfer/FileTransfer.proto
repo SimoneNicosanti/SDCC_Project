@@ -14,15 +14,15 @@ service EdgeFileService {
 }
 
 enum ErrorCodes {
-    OK = 0;
-    S3_ERROR = 9;
-    CHUNK_ERROR = 10;
-    INVALID_METADATA = 11;
-    FILE_CREATE_ERROR = 12 ;
-    FILE_NOT_FOUND_ERROR = 13;
-    FILE_WRITE_ERROR = 15;
-    FILE_READ_ERROR = 16;
-    STREAM_CLOSE_ERROR = 17;
+    OK = 20;
+    S3_ERROR = 21;
+    CHUNK_ERROR = 22;
+    INVALID_METADATA = 23;
+    FILE_CREATE_ERROR = 24 ;
+    FILE_NOT_FOUND_ERROR = 25;
+    FILE_WRITE_ERROR = 26;
+    FILE_READ_ERROR = 27;
+    STREAM_CLOSE_ERROR = 28;
 }
 
 message FileDownloadRequest {

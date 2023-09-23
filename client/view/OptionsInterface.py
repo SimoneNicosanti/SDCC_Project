@@ -23,7 +23,7 @@ def main():
     reset : int = 0
     while not loginSuccessful:
         username = input("\033[33mUSERNAME: \033[0m").strip()
-        password = getpass.getpass("\033[33mPASSWORD: \033[0m", stream=None).strip()
+        password = getpass.getpass("\033[33mPASSWORD: \033[0m").strip()
         try:
             loginSuccessful = Controller.login(username=username, passwd=password) #TODO GESTIRE ERRORI GRPC
             if not loginSuccessful:
