@@ -9,7 +9,6 @@ def perform_action(request_type : Method, file_name : str):
         
     success : bool = Controller.sendRequestForFile(requestType = request_type, fileName = file_name)
     
-
     if not success:
         colored_print(f"La richiesta '{request_type.name} {file_name}' e' fallita.", Color.RED)
         return

@@ -15,17 +15,19 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	status "google.golang.org/grpc/status"
 )
 
 func (s *FileServiceServer) Delete(ctx context.Context, fileDeleteRequest *file_transfer.FileDeleteRequest) (*file_transfer.FileResponse, error) {
 	s.incrementWorkload()
-	returnValue := doDelete(fileDeleteRequest)
+	err := doDelete(fileDeleteRequest)
 	s.decrementWorkload()
-	return &file_transfer.FileResponse{Success: returnValue == nil, RequestId: fileDeleteRequest.RequestId}, returnValue //TODO ritorna errore grpc
+	var returnError error = nil
+	if err != nil {
+		returnError = NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("Errore S3 nella cancellazione del file %s. Errore: %s", fileDeleteRequest.FileName, err.Error()))
+	}
+	return &file_transfer.FileResponse{Success: err == nil, RequestId: fileDeleteRequest.RequestId}, returnError
 }
 
 func doDelete(fileDeleteRequest *file_transfer.FileDeleteRequest) error {
@@ -94,14 +96,14 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 func retrieveMetadata(context context.Context) (requestID string, file_name string, file_size int64, err error) {
 	md, thereIsMetadata := metadata.FromIncomingContext(context)
 	if !thereIsMetadata {
-
-		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
+		return "", "", 0, NewCustomError(int32(file_transfer.ErrorCodes_INVALID_METADATA), "[*NO_METADATA*] - No metadata found")
 	}
 	requestID = md.Get("request_id")[0]
 	file_name = md.Get("file_name")[0]
 	file_size, err = strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
-		return "", "", 0, status.Error(codes.Code(file_transfer.ErrorCodes_INVALID_METADATA), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
+
+		return "", "", 0, NewCustomError(int32(file_transfer.ErrorCodes_INVALID_METADATA), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 	}
 	return requestID, file_name, file_size, nil
 }
@@ -236,7 +238,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	ownerEdge := lookupResponse.OwnerEdge
 	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
-		customErr := status.Error(codes.Code(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -247,7 +249,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	context := context.Background()
 	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &file_transfer.FileDownloadRequest{RequestId: "", FileName: fileName})
 	if err != nil {
-		customErr := status.Error(codes.Code(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -258,7 +260,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
 	err = edgeDownloadStream.CloseSend()
 	if err != nil {
-		customErr := status.Error(codes.Code(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere downloadstream.\r\nError: '%s'", err.Error()))
+		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere downloadstream.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -270,16 +272,17 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 func sendFromLocalCache(fileName string, clientDownloadStream file_transfer.FileService_DownloadServer) error {
 	clientRedirectionChannel := redirection_channel.NewRedirectionChannel(utils.GetIntEnvironmentVariable("DOWNLOAD_CHANNEL_SIZE"))
 	go readFromLocalCache(fileName, clientRedirectionChannel)
-	redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
-	return nil
+	return redirectStreamToClient(clientRedirectionChannel, clientDownloadStream)
 }
 
 // Recupera il file dalla cache locale e ne legge i chunk inviandoli sul canale dato in input
+// TODO Valutare se spostare il metodo direttamente nella cache (alla fine anche la writeOn sta in cache)
 func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
 	utils.PrintEvent("CACHE_HIT", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
 	localFile, err := cache.GetCache().GetFileForReading(fileName)
 	if err != nil {
 		utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile aprire il file '%s'.", fileName))
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: NewCustomError(int32(file_transfer.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
 		return
 	}
 	syscall.Flock(int(localFile.Fd()), syscall.F_RDLCK)
@@ -290,14 +293,25 @@ func readFromLocalCache(fileName string, clientRedirectionChannel redirection_ch
 	buffer := make([]byte, chunkSize)
 
 	defer close(clientRedirectionChannel.MessageChannel)
-	for {
-		bytesRead, err := localFile.Read(buffer)
-		if err == io.EOF {
-			break
+	var endLoop bool = false
+	for !endLoop {
+		select {
+		case <-clientRedirectionChannel.ReturnChannel:
+			// Errore nella ridirezione verso il client
+			endLoop = true
+
+		default:
+			bytesRead, err := localFile.Read(buffer)
+			if err == io.EOF {
+				endLoop = true
+				break
+			}
+			if err != nil {
+				endLoop = true
+				clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: NewCustomError(int32(file_transfer.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
+				break
+			}
+			clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: buffer[:bytesRead], Err: nil}
 		}
-		if err != nil {
-			clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: status.Error(codes.Code(file_transfer.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}
-		}
-		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: buffer[:bytesRead], Err: nil}
 	}
 }

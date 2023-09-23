@@ -5,9 +5,6 @@ import (
 	"edge/redirection_channel"
 	"fmt"
 	"io"
-
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 type GrpcReceiver interface {
@@ -40,7 +37,7 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 				break
 			}
 			if err != nil {
-				customErr := status.Error(codes.Code(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
+				customErr := NewCustomError(int32(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*GRPC_ERROR*] - Failed while receiving chunks via gRPC.\r\nError: '%s'", err.Error()))
 				mainRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 				if isFileCacheable {
 					cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}

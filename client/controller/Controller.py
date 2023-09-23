@@ -124,7 +124,13 @@ def manageGRPCError(e):
 
 def deleteFile(fileName : str, requestId : str, stub : FileServiceStub) -> bool:
     # Richiesta delete del file
-    response : FileResponse = stub.Delete(FileDeleteRequest(fileName = fileName, requestId = requestId))
+    try :
+        response : FileResponse = stub.Delete(FileDeleteRequest(fileName = fileName, requestId = requestId))
+    except grpc.RpcError as err :
+        if err.code() == StatusCode.UNKNOWN:
+            grpcCustomError = json.loads(err.details())
+            if grpcCustomError["ErrorCode"] == ErrorCodes.S3_ERROR :
+                raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta." + grpcCustomError["ErrorMessage"])
     return True
 
 def login(username : str, passwd : str) -> bool :
