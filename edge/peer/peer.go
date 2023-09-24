@@ -97,16 +97,13 @@ func connectAndNotifyYourAdjacent(adjs map[EdgePeer]byte) {
 }
 
 func registerToRegistry(edgePeerPtr *EdgePeer, adj *map[EdgePeer]byte) (*rpc.Client, error) {
-	registryAddr := "registry:1234"
-
-	client, err := utils.ConnectToNode(registryAddr)
-	utils.ExitOnError("", err)
+	client := utils.EnsureConnectionToTarget("registry", utils.GetEnvironmentVariable("REGISTRY_ADDR"), utils.GetIntEnvironmentVariable("SLEEP_TIME_TO_RECONNECT"))
 
 	call := client.Go("RegistryService.PeerEnter", *edgePeerPtr, adj, nil)
 	select {
 	case <-call.Done:
 		if call.Error != nil {
-			return nil, fmt.Errorf("[*ERROR*] -> Errore durante la registrazione al Registry Server. L'errore restituito dalla call è: '%s'", err.Error())
+			return nil, fmt.Errorf("[*ERROR*] -> Errore durante la registrazione al Registry Server. L'errore restituito dalla call è: '%s'", call.Error.Error())
 		}
 	case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"))):
 		return nil, fmt.Errorf("[*TIMEOUT_ERROR*] -> Non è stata ricevuta una risposta entro %d secondi da '%s'", utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_EDGE"), edgePeerPtr.PeerAddr)
@@ -180,13 +177,13 @@ func notifyBloomFiltersToAdjacents() error {
 	return nil
 }
 
-// Funzione esposta al server per inviare la richiesta di elimazione di file
-func NotifyFileDeletion(fileName string, requestId string) error {
-	return notifyFileDeletion(FileDeleteMessage{FileRequest: FileRequest{FileName: fileName, RequestId: requestId}})
+// Funzione esposta al server per notificare l'elimazione del file
+func NotifyFileDeletion(fileName string, requestId string) {
+	notifyFileDeletion(FileDeleteMessage{FileRequest: FileRequest{FileName: fileName, RequestId: requestId}})
 }
 
 // Notifica a tutti i vicini positivi al test dei filtri di bloom l'eliminazione del file e inserisci il messaggio nella cache
-func notifyFileDeletion(fileDeleteMessage FileDeleteMessage) error {
+func notifyFileDeletion(fileDeleteMessage FileDeleteMessage) {
 	GetFileRequestCache().AddRequestInCache(fileDeleteMessage.FileRequest)
 
 	adjacentsMap.connsMutex.RLock()
@@ -206,8 +203,6 @@ func notifyFileDeletion(fileDeleteMessage FileDeleteMessage) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 // Funzione esposta al server per inviare la richiesta di lookup per un file

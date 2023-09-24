@@ -29,7 +29,7 @@ type File struct {
 	popularity int
 }
 
-// implementazione sort.Interface per l'ordinamento dei file per popolarità crescente
+//implementazione sort.Interface per l'ordinamento dei file per popolarità crescente
 type ByPopularity []*File
 
 func (f ByPopularity) Len() int           { return len(f) }
@@ -54,7 +54,7 @@ func GetCache() *Cache {
 	return &selfCache
 }
 
-// Controlla se il file è in cache e restituisce un booleano di conseguenza. Inoltre, se è già presente aumenta la sua popolarità.
+// Controlla se il file è in cache e restituisce un booleano di conseguenza. Inoltre, se è già presente, aumenta la sua popolarità.
 func (cache *Cache) IsFileInCache(fileName string) bool {
 	_, isInCache := cache.cachingMap[fileName]
 	// Ogni volta che viene richiesto il file, aumento la sua popolarità
@@ -75,7 +75,7 @@ func (cache *Cache) GetFileSize(fileName string) int64 {
 	return -1
 }
 
-// Inserisce un file all'interno della cache
+//Inserisce un file all'interno della cache
 func (cache *Cache) InsertFileInCache(redirectionChannel redirection_channel.RedirectionChannel, fileName string, fileSize int64) {
 	defer convertAndPrintCachingMap(cache.cachingMap)
 
@@ -137,6 +137,7 @@ func (cache *Cache) insertFileInQueue(fileName string, fileSize int64, filePopul
 	}
 }
 
+// Rimuove il file dalla cache e dal file system.
 func (cache *Cache) RemoveFileFromCache(fileName string) {
 	// Eliminazione del file dal filesystem
 	err := removeWithLocks(fileName)
@@ -145,15 +146,6 @@ func (cache *Cache) RemoveFileFromCache(fileName string) {
 		return
 	}
 	cache.removeFileFromQueue(fileName)
-}
-
-func (cache *Cache) GetFileForReading(fileName string) (*os.File, error) {
-	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-	if err != nil {
-		// return nil, status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
-		return nil, err
-	}
-	return localFile, nil
 }
 
 func removeWithLocks(fileName string) error {
@@ -246,8 +238,8 @@ func (cache *Cache) removeFileFromQueue(file_name string) {
 	cache.cachingList = append(cache.cachingList[:index], cache.cachingList[index+1:]...)
 }
 
-// Effettua un controllo sulla necessità di eliminare file dalla cache per liberare uno spazio pari a fileSize.
-// In tal caso elimina file in fondo alla coda di popolarità fino a quando non si libera sufficiente memoria.
+//Effettua un controllo sulla necessità di eliminare file dalla cache per liberare uno spazio pari a fileSize.
+//In tal caso elimina file in fondo alla coda di popolarità fino a quando non si libera sufficiente memoria.
 func (cache *Cache) freeSpaceForInsert(fileSize int64) error {
 	cache.deleteExpiredFiles()
 	freeMemory := retrieveFreeMemorySize()
@@ -260,8 +252,8 @@ func (cache *Cache) freeSpaceForInsert(fileSize int64) error {
 	return nil
 }
 
-// Analizza i file necessari per liberare abbastanza spazio a partire da quelli a più bassa priorità.
-// Controlla inoltre se tra i file scelti è possibile risparmiarne qualcuno minimizzando il numero di eliminazioni.
+//Analizza i file necessari per liberare abbastanza spazio a partire da quelli a più bassa priorità.
+//Controlla inoltre se tra i file scelti è possibile risparmiarne qualcuno minimizzando il numero di eliminazioni.
 func (cache *Cache) chooseAndDeleteFiles(memoryRequired int64) error {
 	var memoryCount int64 = 0
 	var utilityFilesToDelete []*File
@@ -307,6 +299,7 @@ func (cache *Cache) chooseAndDeleteFiles(memoryRequired int64) error {
 	// FINE DELLA SEZIONE CRITICA ---------------------------------------------------------------------
 }
 
+// Restituisce la quantità di memoria libera all'interno del file system.
 func retrieveFreeMemorySize() int64 {
 	statPtr := new(syscall.Statfs_t)
 	err := syscall.Statfs("/files", statPtr)
@@ -317,8 +310,8 @@ func retrieveFreeMemorySize() int64 {
 	return int64(statPtr.Bfree * uint64(statPtr.Bsize))
 }
 
-// Controlla se il file è adatto per essere inserito all'interno della cache.
-// In particolare controlla se la dimensione è positiva e non superi un limite impostato nei parametri di configurazione.
+//Controlla se il file è adatto per essere inserito all'interno della cache.
+//In particolare controlla se la dimensione è positiva e non superi un limite impostato nei parametri di configurazione.
 func IsFileCacheable(file_size int64) bool {
 	max_size := utils.GetInt64EnvironmentVariable("MAX_CACHABLE_FILE_SIZE")
 	if file_size > 0 && file_size <= max_size {

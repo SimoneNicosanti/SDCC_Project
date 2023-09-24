@@ -1,7 +1,6 @@
 =========================================
 RAGIONIAMO
 =========================================
-0] incolliamo ogni volta le credenziali del lab aws (è normale?) --> SI
 1] rete p2p non strutturata con nuove connessioni probabilistiche e casuali (Erdős–Rényi model) --> OK
 2] procedura di login e gestione su nome file --> OK
         - database chiave valore REDIS per gestire le utenze
@@ -36,11 +35,11 @@ RAGIONIAMO
 ============================================
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
-x] vedere se mandare filtri di bloom al load_balancer per invio di richieste più efficiente
+x] ragionare sul problema del notify job end
 N-1] testing
         test rispetto a situazione di base (solo cloud)
         test molte get / test intermedio / test molte put (box plot su tempi di risposta)
         test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
         come i parametri di configurazione influenzano le prestazioni
-N] inventare storiella per presentare (sistema di sensori IoT (?))
+N] inventare storiella per presentare (sistema di sensori IoT (?)) + PRESENTAZIONE
 N+1] risolvere ultimi TODO e pulizia codice (e.g. mettere lettere piccole a metodi che non vanno esportati / commentare sopra metodi cosa fanno)

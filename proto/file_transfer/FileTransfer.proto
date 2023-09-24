@@ -14,7 +14,7 @@ service EdgeFileService {
 }
 
 enum ErrorCodes {
-    OK = 20;
+    OK = 0;
     S3_ERROR = 21;
     CHUNK_ERROR = 22;
     INVALID_METADATA = 23;
@@ -23,6 +23,7 @@ enum ErrorCodes {
     FILE_WRITE_ERROR = 26;
     FILE_READ_ERROR = 27;
     STREAM_CLOSE_ERROR = 28;
+    REQUEST_FAILED = 29;
 }
 
 message FileDownloadRequest {

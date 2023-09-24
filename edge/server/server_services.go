@@ -10,6 +10,7 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"syscall"
 	"time"
@@ -32,18 +33,14 @@ func (s *FileServiceServer) Delete(ctx context.Context, fileDeleteRequest *file_
 
 func doDelete(fileDeleteRequest *file_transfer.FileDeleteRequest) error {
 	defer notifyJobEnd()
-	//TODO distinguere errori per inviarli al client correttamente
 	if cache.GetCache().IsFileInCache(fileDeleteRequest.FileName) {
 		cache.GetCache().RemoveFileFromCache(fileDeleteRequest.FileName)
 	}
 	err := s3_boundary.DeleteFromS3(fileDeleteRequest.FileName)
 	if err != nil {
-		return err
+		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), err.Error())
 	}
-	err = peer.NotifyFileDeletion(fileDeleteRequest.FileName, fileDeleteRequest.RequestId)
-	if err != nil {
-		return err
-	}
+	peer.NotifyFileDeletion(fileDeleteRequest.FileName, fileDeleteRequest.RequestId)
 	return nil
 }
 
@@ -81,13 +78,13 @@ func doUpload(uploadStream file_transfer.FileService_UploadServer) error {
 
 	if err != nil {
 		utils.PrintEvent("UPLOAD_ERROR", fmt.Sprintf("Errore nel caricare il file '%s'\r\nRequest ID: '%s'", fileName, requestID))
-		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("[*ERROR*] - File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
+		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("File Upload to S3 encountered some error.\r\nError: '%s'", err.Error()))
 	}
 	utils.PrintEvent("UPLOAD_SUCCESS", fmt.Sprintf("File '%s' caricato con successo\r\nRequest ID: '%s'", fileName, requestID))
 	response := file_transfer.FileResponse{RequestId: requestID, Success: true}
 	err = uploadStream.SendAndClose(&response)
 	if err != nil {
-		return NewCustomError(int32(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
+		return NewCustomError(int32(file_transfer.ErrorCodes_CHUNK_ERROR), fmt.Sprintf("Impossibile chiudere il clientstream.\r\nError: '%s'", err.Error()))
 	}
 
 	return nil
@@ -102,7 +99,6 @@ func retrieveMetadata(context context.Context) (requestID string, file_name stri
 	file_name = md.Get("file_name")[0]
 	file_size, err = strconv.ParseInt(md.Get("file_size")[0], 10, 64)
 	if err != nil {
-
 		return "", "", 0, NewCustomError(int32(file_transfer.ErrorCodes_INVALID_METADATA), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 	}
 	return requestID, file_name, file_size, nil
@@ -130,13 +126,12 @@ func doDownload(requestMessage *file_transfer.FileDownloadRequest, downloadStrea
 
 		if err != nil {
 			utils.PrintEvent("LOOKUP_SERVER_ERROR", "Impossibile creare il lookup server")
-			return err
+			return NewCustomError(int32(file_transfer.ErrorCodes_REQUEST_FAILED), fmt.Sprintf("[*CAST_ERROR*] - Impossibile effettuare il cast della size : '%s'", err.Error()))
 		}
 		callbackChannel := lookupFileInNetwork(lookupServer, requestMessage)
 
 		// potrebbe averlo qualche edge --> attendi risposte alla lookup
 		var askS3 bool = !tryToSendFromOtherEdge(callbackChannel, requestMessage, downloadStream)
-		//lookupServer.CloseServer()
 
 		if askS3 { // nessun edge contattato ha il file --> Contatta S3: Ricevi file come stream e invia chunk (+ salva in locale)
 			err := redirectFromS3(requestMessage.FileName, downloadStream)
@@ -279,7 +274,7 @@ func sendFromLocalCache(fileName string, clientDownloadStream file_transfer.File
 // TODO Valutare se spostare il metodo direttamente nella cache (alla fine anche la writeOn sta in cache)
 func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
 	utils.PrintEvent("CACHE_HIT", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
-	localFile, err := cache.GetCache().GetFileForReading(fileName)
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
 	if err != nil {
 		utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile aprire il file '%s'.", fileName))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: NewCustomError(int32(file_transfer.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}

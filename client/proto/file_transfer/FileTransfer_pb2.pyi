@@ -16,6 +16,7 @@ class ErrorCodes(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FILE_WRITE_ERROR: _ClassVar[ErrorCodes]
     FILE_READ_ERROR: _ClassVar[ErrorCodes]
     STREAM_CLOSE_ERROR: _ClassVar[ErrorCodes]
+    REQUEST_FAILED: _ClassVar[ErrorCodes]
 OK: ErrorCodes
 S3_ERROR: ErrorCodes
 CHUNK_ERROR: ErrorCodes
@@ -25,6 +26,7 @@ FILE_NOT_FOUND_ERROR: ErrorCodes
 FILE_WRITE_ERROR: ErrorCodes
 FILE_READ_ERROR: ErrorCodes
 STREAM_CLOSE_ERROR: ErrorCodes
+REQUEST_FAILED: ErrorCodes
 
 class FileDownloadRequest(_message.Message):
     __slots__ = ["fileName", "requestId"]

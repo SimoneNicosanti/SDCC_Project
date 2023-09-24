@@ -6,7 +6,7 @@ from proto.load_balancer.LoadBalancer_pb2 import *
 from proto.load_balancer.LoadBalancer_pb2_grpc import *
 from grpc import StatusCode
 from asyncio import Semaphore
-import json, grpc, os, io
+import json, grpc, os, io, threading
 
 data = None
 userInfo : User = User(username="a",passwd="a")
@@ -18,14 +18,14 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
     # Otteniamo l'indirizzo del peer da contattare
     response: BalancerResponse = getEdgeFromBalancer()
     if not response.success:
-        return False
+        raise MyErrors.NoServerAvailable(e.details())
     # Preparazione chiamata gRPC
     try:
         channel : grpc.Channel = grpc.insecure_channel(response.edgeIpAddr, options=[('grpc.max_receive_message_length', int(os.environ.get("MAX_GRPC_MESSAGE_SIZE")))])
         stub = FileServiceStub(channel)
     except grpc.RpcError as e:
-        if e.code().value[0] == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con l'edgeServer fallita. E' possibile che il edgeServer abbia avuto un guasto.")
+        if e.code() == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException(e.details())
         raise e
     # Esecuzione dell'azione
     result = execAction(requestId = response.requestId, requestType = requestType, fileName = fileName, stub = stub)
@@ -38,8 +38,10 @@ def getEdgeFromBalancer() -> BalancerResponse:
         stub = BalancingServiceStub(channel)
         return stub.GetEdge(userInfo)
     except grpc.RpcError as e:
+        if e.code() == StatusCode.UNAUTHENTICATED:
+            raise MyErrors.UnauthenticatedUserException(e.details())
         if e.code() == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
+            raise MyErrors.ConnectionFailedException(e.details())
         raise e
     
 
@@ -56,7 +58,7 @@ def execAction(requestId : str, requestType : Method, fileName : str, stub : Fil
     return result
 
 
-def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool :
+def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool:
     try:
         # Otteniamo i chunks dalla chiamata gRPC
         chunks = stub.Download(FileDownloadRequest(requestId = requestId, fileName = filename))
@@ -68,20 +70,21 @@ def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> boo
         manageGRPCError(e)
 
 
-def buildUploadFileName(fileName:str) -> str:
-    global userInfo
-    # Split the fileName into base name and extension (if any)
-    parts = fileName.split('.')
-    # If there's no extension, treat the entire filename as the base name
-    if len(parts) == 1:
-        base_name = parts[0]
-        extension = ''
-    else:
-        base_name = '.'.join(parts[:-1])
-        extension = parts[-1]
-    # Concatenate the username, base name, and extension (if any)
-    uploadFileName = f"{base_name}_{userInfo.username}.{extension}" if extension else f"{base_name}_{userInfo.username}"
-    return uploadFileName
+def deleteFile(fileName : str, requestId : str, stub : FileServiceStub) -> bool:
+    # Richiesta delete del file
+    try:
+        response : FileResponse = stub.Delete(FileDeleteRequest(fileName = fileName, requestId = requestId))
+    except grpc.RpcError as e:
+        if e.code() == StatusCode.UNKNOWN:
+            grpcCustomError = json.loads(e.details())
+            match grpcCustomError["ErrorCode"]:
+                case ErrorCodes.S3_ERROR:
+                    raise MyErrors.RequestFailedException("Fallimento su S3.\r\n" + grpcCustomError["ErrorMessage"])    
+            raise MyErrors.UnknownException("Errore nell'operazione. Non si hanno maggiori dettagli su cosa è andato storto.\r\n" + e.details()) 
+        if e.code() == StatusCode.UNAVAILABLE:
+            raise MyErrors.ConnectionFailedException("Connessione con il server fallita.\r\n" + e.details())
+    return response.success
+
 
 def uploadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool :
     response : BalancerResponse
@@ -99,11 +102,24 @@ def uploadFile(filename : str, requestId : str, stub : FileServiceStub) -> bool 
             raise MyErrors.FailedToOpenException(f"Impossibile aprire file: {str(e)}")
     except grpc.RpcError as e:
         manageGRPCError(e)
-    # Se la risposta non riguarda la nostra richiesta, lanciamo una eccezione
-    if response.requestId != requestId:
-        raise MyErrors.RequestFailedException("Impossibile soddisfare la richiesta. E' stata ricevuta una risposta relativa ad un'altra richiesta.")
-    
     return response.success
+
+
+def buildUploadFileName(fileName:str) -> str:
+    global userInfo
+    # Split del nome del file in base ed estensione (se presente)
+    parts = fileName.split('.')
+    # Se l'estensione del file non è presente, prendiamo l'intero nome del file come base
+    if len(parts) == 1:
+        base_name = parts[0]
+        extension = ''
+    else:
+        base_name = '.'.join(parts[:-1])
+        extension = parts[-1]
+    # Concatena il filename iniziale, lo username e l'estensione (se presente)
+    uploadFileName = f"{base_name}_{userInfo.username}.{extension}" if extension else f"{base_name}_{userInfo.username}"
+    return uploadFileName
+
 
 def manageGRPCError(e):
     if e.code() == StatusCode.UNKNOWN:
@@ -112,26 +128,15 @@ def manageGRPCError(e):
             case ErrorCodes.FILE_NOT_FOUND_ERROR:
                 raise MyErrors.FileNotFoundException("File richiesto non trovato.\r\n" + grpcCustomError["ErrorMessage"])
             case ErrorCodes.INVALID_METADATA:
-                raise MyErrors.InvalidMetadataException("Metadata inviati non validi.")
+                raise MyErrors.InvalidMetadataException("Metadata inviati non validi.\r\n" + grpcCustomError["ErrorMessage"])
             case ErrorCodes.FILE_READ_ERROR:
-                raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")
+                raise MyErrors.RequestFailedException("Fallimento del server sulla lettura del file.\r\n" + grpcCustomError["ErrorMessage"])
             case ErrorCodes.S3_ERROR:
-                raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta.")    
-        raise MyErrors.UnknownException("Errore nell'operazione. Non si hanno maggiori dettagli su cosa è andato storto.") 
+                raise MyErrors.RequestFailedException("Fallimento su S3.\r\n" + grpcCustomError["ErrorMessage"])    
+        raise MyErrors.UnknownException("Errore sconosciuto nell'operazione.\r\n" + e.details()) 
     if e.code() == StatusCode.UNAVAILABLE:
-        raise MyErrors.ConnectionFailedException("Connessione con il server fallita.")
+        raise MyErrors.ConnectionFailedException("Connessione con il server fallita.\r\n" + e.details())
     raise e
-
-def deleteFile(fileName : str, requestId : str, stub : FileServiceStub) -> bool:
-    # Richiesta delete del file
-    try :
-        response : FileResponse = stub.Delete(FileDeleteRequest(fileName = fileName, requestId = requestId))
-    except grpc.RpcError as err :
-        if err.code() == StatusCode.UNKNOWN:
-            grpcCustomError = json.loads(err.details())
-            if grpcCustomError["ErrorCode"] == ErrorCodes.S3_ERROR :
-                raise MyErrors.RequestFailedException("Fallimento durante il soddisfacimento della richiesta." + grpcCustomError["ErrorMessage"])
-    return True
 
 def login(username : str, passwd : str) -> bool :
     global userInfo
@@ -139,11 +144,11 @@ def login(username : str, passwd : str) -> bool :
         channel = grpc.insecure_channel(os.environ.get("LOAD_BALANCER_ADDR"))
         stub = BalancingServiceStub(channel)
         userInfo = User(username=username, passwd=passwd)
-        loginResponse:LoginResponse = stub.LoginClient(userInfo)
+        loginResponse : LoginResponse = stub.LoginClient(userInfo)
         return loginResponse.logged
     except grpc.RpcError as e:
         if e.code() == StatusCode.UNAVAILABLE:
-            raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita. E' possibile che abbia avuto un guasto.")
+            raise MyErrors.ConnectionFailedException("Connessione con il balancer fallita.\r\n" + e.details())
         raise e
 
 class FileService:

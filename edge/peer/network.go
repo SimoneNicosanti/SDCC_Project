@@ -70,7 +70,6 @@ func heartbeatToRegistry() {
 	for {
 		time.Sleep(time.Duration(HEARTBEAT_FREQUENCY) * time.Second)
 		heartbeatFunction()
-		//utils.PrintEvent("HEARTBEAT", "heartbeat eseguito.")
 	}
 }
 

@@ -37,12 +37,7 @@ func heartbeatToBalancer() {
 func heartbeatFunction() {
 	heartbeatMessage := HeartbeatMessage{EdgeServer: edgeServer, CurrentLoad: workload}
 	if balancerConnection == nil {
-		newBalancerConnection, err := utils.ConnectToNode("load_balancer:4321")
-		if err != nil {
-			utils.PrintEvent("LOADBALANCER_UNREACHABLE", "Impossibile stabilire connessione con il Load Balancer")
-			return
-		}
-		balancerConnection = newBalancerConnection
+		balancerConnection = utils.EnsureConnectionToTarget("load_balancer", utils.GetEnvironmentVariable("LOAD_BALANCER_ADDR"), utils.GetIntEnvironmentVariable("SLEEP_TIME_TO_RECONNECT"))
 	}
 	call := balancerConnection.Go("BalancingServiceServer.Heartbeat", heartbeatMessage, new(int), nil)
 	select {
@@ -64,7 +59,7 @@ func heartbeatFunction() {
 
 func notifyJobEnd() {
 	if balancerConnection == nil {
-		newBalancerConnection, err := utils.ConnectToNode("load_balancer:4321")
+		newBalancerConnection, err := utils.ConnectToNode(utils.GetEnvironmentVariable("LOAD_BALANCER_ADDR"))
 		if err != nil {
 			utils.PrintEvent("LOADBALANCER_UNREACHABLE", "Impossibile stabilire connessione con il Load Balancer")
 			return

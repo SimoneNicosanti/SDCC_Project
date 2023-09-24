@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func ExitOnError(errorMessage string, err error) {
@@ -184,4 +185,21 @@ func ConnectToNode(addr string) (*rpc.Client, error) {
 		return nil, fmt.Errorf("errore Dial HTTP")
 	}
 	return client, nil
+}
+
+// Tenta di connettersi al target fino a quando non riesce. Tra un tentativo e l'altro c'è un'attesa configurabile.
+func EnsureConnectionToTarget(targetName string, targetAddr string, timeToSleep int) *rpc.Client {
+	var client *rpc.Client
+	var err error
+
+	for {
+		client, err = ConnectToNode(targetAddr)
+		// Al primo successo usciamo dal loop
+		if err == nil {
+			break
+		}
+		PrintEvent(fmt.Sprintf("%s_DOWN", strings.ToUpper(targetName)), fmt.Sprintf("%s non risponde, vengono attesi %d secondi prima di riprovare la connessione...", targetName, timeToSleep))
+		time.Sleep(time.Duration(timeToSleep) * time.Second)
+	}
+	return client
 }
