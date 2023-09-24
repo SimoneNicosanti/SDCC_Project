@@ -10,7 +10,6 @@ import (
 	"edge/utils"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"syscall"
 	"time"
@@ -274,7 +273,7 @@ func sendFromLocalCache(fileName string, clientDownloadStream file_transfer.File
 // TODO Valutare se spostare il metodo direttamente nella cache (alla fine anche la writeOn sta in cache)
 func readFromLocalCache(fileName string, clientRedirectionChannel redirection_channel.RedirectionChannel) {
 	utils.PrintEvent("CACHE_HIT", fmt.Sprintf("Il file '%s' è stato trovato nella cache locale", fileName))
-	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+	localFile, err := cache.GetCache().GetFileForReading(fileName)
 	if err != nil {
 		utils.PrintEvent("CACHE_ERROR", fmt.Sprintf("Impossibile aprire il file '%s'.", fileName))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: NewCustomError(int32(file_transfer.ErrorCodes_FILE_READ_ERROR), fmt.Sprintf("[*ERROR*] - Failed during read operation.\r\nError: '%s'", err.Error()))}

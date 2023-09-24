@@ -148,6 +148,15 @@ func (cache *Cache) RemoveFileFromCache(fileName string) {
 	cache.removeFileFromQueue(fileName)
 }
 
+func (cache *Cache) GetFileForReading(fileName string) (*os.File, error) {
+	localFile, err := os.Open(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
+	if err != nil {
+		// return nil, status.Error(codes.Code(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), fmt.Sprintf("[*ERROR*] - File opening failed.\r\nError: '%s'", err.Error()))
+		return nil, err
+	}
+	return localFile, nil
+}
+
 func removeWithLocks(fileName string) error {
 	// Apertura file
 	filePath := utils.GetEnvironmentVariable("FILES_PATH") + fileName
