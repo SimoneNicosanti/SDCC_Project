@@ -28,12 +28,12 @@ class S3Exception(Exception):
         self.message = message
         super().__init__(self.message)
 
-class NoServerAvailable(Exception):
+class NoServerAvailableException(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
 
-class FileNotFound(Exception):
+class LocalFileNotFoundException(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)

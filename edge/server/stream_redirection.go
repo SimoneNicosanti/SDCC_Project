@@ -73,9 +73,9 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 		mainChannelError = err
 	}
 	if grpcError != nil {
-		return fmt.Errorf("[*GRPC_ERROR*] - %s", grpcError.Error())
+		return fmt.Errorf("GRPC_ERROR : %s", grpcError.Error())
 	} else if mainChannelError != nil {
-		return fmt.Errorf("[*MAIN_CHANNEL_ERROR*] - %s", mainChannelError.Error())
+		return fmt.Errorf("MAIN_CHANNEL_ERROR : %s", mainChannelError.Error())
 	} else {
 		return nil
 	}

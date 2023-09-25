@@ -27,11 +27,9 @@ class User(_message.Message):
     def __init__(self, username: _Optional[str] = ..., passwd: _Optional[str] = ...) -> None: ...
 
 class BalancerResponse(_message.Message):
-    __slots__ = ["success", "edgeIpAddr", "requestId"]
-    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ["edgeIpAddr", "requestId"]
     EDGEIPADDR_FIELD_NUMBER: _ClassVar[int]
     REQUESTID_FIELD_NUMBER: _ClassVar[int]
-    success: bool
     edgeIpAddr: str
     requestId: str
-    def __init__(self, success: bool = ..., edgeIpAddr: _Optional[str] = ..., requestId: _Optional[str] = ...) -> None: ...
+    def __init__(self, edgeIpAddr: _Optional[str] = ..., requestId: _Optional[str] = ...) -> None: ...

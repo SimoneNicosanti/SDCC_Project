@@ -24,21 +24,23 @@ func (s *FileServiceServer) Delete(ctx context.Context, fileDeleteRequest *file_
 	s.incrementWorkload()
 	err := doDelete(fileDeleteRequest)
 	s.decrementWorkload()
-	var returnError error = nil
-	if err != nil {
-		returnError = NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), fmt.Sprintf("Errore S3 nella cancellazione del file %s. Errore: %s", fileDeleteRequest.FileName, err.Error()))
-	}
-	return &file_transfer.FileResponse{Success: err == nil, RequestId: fileDeleteRequest.RequestId}, returnError
+	return &file_transfer.FileResponse{Success: err == nil, RequestId: fileDeleteRequest.RequestId}, err
 }
 
 func doDelete(fileDeleteRequest *file_transfer.FileDeleteRequest) error {
 	defer notifyJobEnd()
+	utils.PrintEvent("CLIENT_REQUEST_RECEIVED", fmt.Sprintf("Ricevuta richiesta di delete per file '%s'\r\nRequest ID: '%s'", fileDeleteRequest.FileName, fileDeleteRequest.RequestId))
+
 	if cache.GetCache().IsFileInCache(fileDeleteRequest.FileName) {
 		cache.GetCache().RemoveFileFromCache(fileDeleteRequest.FileName)
 	}
 	err := s3_boundary.DeleteFromS3(fileDeleteRequest.FileName)
 	if err != nil {
-		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), err.Error())
+		customErrorMessage := fmt.Sprintf("Errore S3 nella cancellazione del file %s. Errore: %s", fileDeleteRequest.FileName, err.Error())
+		if err.Error() == "NotFound" {
+			return NewCustomError(int32(file_transfer.ErrorCodes_FILE_NOT_FOUND_ERROR), customErrorMessage)
+		}
+		return NewCustomError(int32(file_transfer.ErrorCodes_S3_ERROR), customErrorMessage)
 	}
 	peer.NotifyFileDeletion(fileDeleteRequest.FileName, fileDeleteRequest.RequestId)
 	return nil
@@ -233,7 +235,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	ownerEdge := lookupResponse.OwnerEdge
 	conn, err := grpc.Dial(ownerEdge.IpAddr, opts...)
 	if err != nil {
-		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := NewCustomError(int32(file_transfer.ErrorCodes_REQUEST_FAILED), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while trying to dial ownerEdge via gRPC.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -244,7 +246,7 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 	context := context.Background()
 	edgeDownloadStream, err := grpcClient.DownloadFromEdge(context, &file_transfer.FileDownloadRequest{RequestId: "", FileName: fileName})
 	if err != nil {
-		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
+		customErr := NewCustomError(int32(file_transfer.ErrorCodes_REQUEST_FAILED), fmt.Sprintf("[*DOWNLOAD_ERROR*] - Failed while triggering download from edge via gRPC.\r\nError: '%s'", err.Error()))
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
 		if isFileCacheable {
 			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
@@ -252,7 +254,13 @@ func downloadFromOtherEdge(lookupResponse peer.FileLookupResponse, fileName stri
 		return
 	}
 
-	rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
+	err = rcvAndRedirectChunks(clientRedirectionChannel, cacheRedirectionChannel, isFileCacheable, edgeDownloadStream)
+	if err != nil {
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: err}
+		if isFileCacheable {
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: err}
+		}
+	}
 	err = edgeDownloadStream.CloseSend()
 	if err != nil {
 		customErr := NewCustomError(int32(file_transfer.ErrorCodes_STREAM_CLOSE_ERROR), fmt.Sprintf("[*ERROR*] - Impossibile chiudere downloadstream.\r\nError: '%s'", err.Error()))

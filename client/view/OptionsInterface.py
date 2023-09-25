@@ -5,15 +5,15 @@ import getpass
 from utils.Utils import *
 
 def perform_action(request_type : Method, file_name : str):
-    colored_print(f"Richiesta '{request_type.name} {file_name}' in elaborazione.", Color.YELLOW)
+    colored_print(f"La richiesta '{request_type.name} {file_name}' è in elaborazione.", Color.YELLOW)
     
     success : bool = Controller.sendRequestForFile(requestType = request_type, fileName = file_name)
 
     if not success:
-        colored_print(f"La richiesta '{request_type.name} {file_name}' e' fallita.", Color.RED)
+        colored_print(f"La richiesta '{request_type.name} {file_name}' è fallita.", Color.RED)
         return
 
-    colored_print(f"Richiesta '{request_type.name} {file_name}' soddisfatta.", Color.GREEN)
+    colored_print(f"La richiesta '{request_type.name} {file_name}' è stata soddisfatta.", Color.GREEN)
 
 def main():
     displayLoginBanner()
@@ -76,10 +76,10 @@ def option_interface(username:str):
             except MyErrors.FailedToOpenException as e:
                 colored_print("Impossibile aprire il file. Assicurati che il file esista.", Color.RED)
                 Debug.errorDebug(e.message)
-            except MyErrors.NoServerAvailable as e:
+            except MyErrors.NoServerAvailableException as e:
                 colored_print("Nessun server è disponibile. Ritenta più tardi.", Color.RED)
                 Debug.errorDebug(e.message)
-            except MyErrors.FileNotFound as e:
+            except MyErrors.LocalFileNotFoundException as e:
                 colored_print("Il file non esiste in locale.", Color.RED)
                 Debug.errorDebug(e.message)
             except MyErrors.UnauthenticatedUserException as e:

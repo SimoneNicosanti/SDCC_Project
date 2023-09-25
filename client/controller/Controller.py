@@ -6,7 +6,7 @@ from proto.load_balancer.LoadBalancer_pb2 import *
 from proto.load_balancer.LoadBalancer_pb2_grpc import *
 from grpc import StatusCode
 from asyncio import Semaphore
-import json, grpc, os, io, threading
+import json, grpc, os, io
 
 data = None
 userInfo : User = User(username="a",passwd="a")
@@ -14,11 +14,10 @@ sem : Semaphore = Semaphore()
 
 def sendRequestForFile(requestType : Method, fileName : str) -> bool:
     if requestType == Method.PUT and not os.path.exists(os.environ.get("FILES_PATH") + fileName):
-        raise MyErrors.FileNotFound("Il file da caricare non esiste in locale.")
+        raise MyErrors.LocalFileNotFoundException("Il file da caricare non esiste in locale.")
     # Otteniamo l'indirizzo del peer da contattare
     response: BalancerResponse = getEdgeFromBalancer()
-    if not response.success:
-        raise MyErrors.NoServerAvailable(e.details())
+
     # Preparazione chiamata gRPC
     try:
         channel : grpc.Channel = grpc.insecure_channel(response.edgeIpAddr, options=[('grpc.max_receive_message_length', int(os.environ.get("MAX_GRPC_MESSAGE_SIZE")))])
@@ -38,6 +37,12 @@ def getEdgeFromBalancer() -> BalancerResponse:
         stub = BalancingServiceStub(channel)
         return stub.GetEdge(userInfo)
     except grpc.RpcError as e:
+        if e.code() == StatusCode.UNKNOWN:
+            grpcCustomError = json.loads(e.details())
+            match grpcCustomError["ErrorCode"]:
+                case ErrorCodesLoadBalancer.NO_SERVER_AVAILABLE:
+                    raise MyErrors.NoServerAvailableException("Nessun server disponbile.")
+            raise MyErrors.UnknownException("Errore nell'operazione. Non si hanno maggiori dettagli su cosa è andato storto.\r\n" + e.details()) 
         if e.code() == StatusCode.UNAUTHENTICATED:
             raise MyErrors.UnauthenticatedUserException(e.details())
         if e.code() == StatusCode.UNAVAILABLE:
@@ -80,6 +85,8 @@ def deleteFile(fileName : str, requestId : str, stub : FileServiceStub) -> bool:
             match grpcCustomError["ErrorCode"]:
                 case ErrorCodes.S3_ERROR:
                     raise MyErrors.RequestFailedException("Fallimento su S3.\r\n" + grpcCustomError["ErrorMessage"])    
+                case ErrorCodes.FILE_NOT_FOUND_ERROR:
+                    raise MyErrors.FileNotFoundException("Il file non esiste o è già stato eliminato da S3.\r\n" + grpcCustomError["ErrorMessage"])
             raise MyErrors.UnknownException("Errore nell'operazione. Non si hanno maggiori dettagli su cosa è andato storto.\r\n" + e.details()) 
         if e.code() == StatusCode.UNAVAILABLE:
             raise MyErrors.ConnectionFailedException("Connessione con il server fallita.\r\n" + e.details())

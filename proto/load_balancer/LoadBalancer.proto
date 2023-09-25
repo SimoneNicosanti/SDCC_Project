@@ -10,7 +10,8 @@ service BalancingService {
 
 enum ErrorCodesLoadBalancer {
     OK = 0;
-    NO_SERVER_AVAILABLE = 16;
+    NO_SERVER_AVAILABLE = 20;
+
 }
 
 message LoginResponse {
@@ -23,7 +24,6 @@ message User {
 }
 
 message BalancerResponse {
-    bool success = 1;
-    string edgeIpAddr = 2;
-    string requestId = 3;
+    string edgeIpAddr = 1;
+    string requestId = 2;
 }

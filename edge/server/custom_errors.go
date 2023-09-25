@@ -1,7 +1,6 @@
 package server
 
 import (
-	"edge/utils"
 	"encoding/json"
 
 	"google.golang.org/grpc/codes"
@@ -24,6 +23,5 @@ func buildJsonMessage(errorCode int32, msg string) string {
 			ErrorMessage: msg,
 		})
 	stringEncoding := string(byteEncoding)
-	utils.PrintEvent("CONVERSION_RESULT", stringEncoding)
 	return stringEncoding
 }

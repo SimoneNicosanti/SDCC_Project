@@ -36,6 +36,8 @@ RAGIONIAMO
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
 x] ragionare sul problema del notify job end
+x] qual'è il modello di consistenza di S3?
+x] aggiungere campo al chunk o metadati per notificare un errore al client quando ho OTHER_EDGE_DOWNLOAD_ERROR e ripiego su un altro edge --> problema che il client prende due volte i primi chunk sullo stesso file
 N-1] testing
         test rispetto a situazione di base (solo cloud)
         test molte get / test intermedio / test molte put (box plot su tempi di risposta)
@@ -43,3 +45,6 @@ N-1] testing
         come i parametri di configurazione influenzano le prestazioni
 N] inventare storiella per presentare (sistema di sensori IoT (?)) + PRESENTAZIONE
 N+1] risolvere ultimi TODO e pulizia codice (e.g. mettere lettere piccole a metodi che non vanno esportati / commentare sopra metodi cosa fanno)
+
+NOTE:
+Se non esiste nessun edge il load balancer non dovrebbe permettere al client di contattare direttamente S3?

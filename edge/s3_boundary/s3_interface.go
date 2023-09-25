@@ -78,7 +78,7 @@ func DeleteFromS3(fileName string) error {
 		utils.PrintEvent("S3_DELETE_ERR", "Impossibile verificare esistenza del file")
 		aerr := err.(awserr.Error)
 		if strings.Compare(aerr.Code(), "NotFound") == 0 {
-			return fmt.Errorf("file non trovato")
+			return fmt.Errorf("NotFound")
 		}
 		return err
 	}

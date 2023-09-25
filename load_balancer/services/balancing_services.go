@@ -35,14 +35,15 @@ func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, user
 	if success {
 		edgeIpAddr, err = balancingServer.pickEdgeServer()
 		if err != nil {
-			return &proto.BalancerResponse{Success: false, EdgeIpAddr: ""}, status.Error(codes.Unauthenticated, err.Error())
+			return &proto.BalancerResponse{}, utils.NewCustomError(int32(proto.ErrorCodesLoadBalancer_NO_SERVER_AVAILABLE), err.Error())
 		}
 	} else {
 		edgeIpAddr = ""
+		return &proto.BalancerResponse{}, status.Error(codes.Unauthenticated, "User not authorized")
 	}
 	newRequestId := utils.ConvertToString(balancingServer.sequenceNumber)
 	balancingServer.sequenceNumber++
-	return &proto.BalancerResponse{Success: success, EdgeIpAddr: edgeIpAddr, RequestId: newRequestId}, nil
+	return &proto.BalancerResponse{EdgeIpAddr: edgeIpAddr, RequestId: newRequestId}, nil
 }
 
 func (balancingServer *BalancingServiceServer) NotifyJobEnd(edgeServer EdgeServer, returnPtr *int) error {
