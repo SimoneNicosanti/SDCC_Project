@@ -60,7 +60,14 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 	}
 	close(mainRedirectionChannel.MessageChannel)
 	close(cacheRedirectionChannel.MessageChannel)
-	err := <-mainRedirectionChannel.ReturnChannel
+
+	// Aspetto il completamento dal canale principale solo se non ho avuto errore da qual canale
+	// Altrimenti il lettore di quel canale ha già completato e non invierà mai errore
+	// Uscito dal for devo vedere se c'è un errore sugli ultimi chunk mandati sul canale
+	var err error = nil
+	if mainChannelError == nil {
+		err = <-mainRedirectionChannel.ReturnChannel
+	}
 
 	if err != nil {
 		mainChannelError = err

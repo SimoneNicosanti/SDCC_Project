@@ -7,78 +7,78 @@ import (
 	"time"
 )
 
-func checkHeartbeat() {
+func (r *RegistryService) checkHeartbeat() {
 	MONITOR_TIMER := utils.GetIntEnvironmentVariable("MONITOR_TIMER")
 	HEARTBEAT_THR := utils.GetIntEnvironmentVariable("HEARTBEAT_THR")
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
-		checkForDeadPeers(float64(HEARTBEAT_THR))
+		r.checkForDeadPeers(float64(HEARTBEAT_THR))
 	}
 }
 
-func checkForDeadPeers(heartbeatThr float64) {
-	peerMap.mutex.Lock()
-	defer peerMap.mutex.Unlock()
+func (r *RegistryService) checkForDeadPeers(heartbeatThr float64) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
-	lastCheckTime := peerMap.heartbeatCheckTime
-	for edgePeer, lastHeartbeatTime := range peerMap.heartbeats {
+	lastCheckTime := r.heartbeatCheckTime
+	for edgePeer, lastHeartbeatTime := range r.heartbeats {
 		if lastCheckTime.Sub(lastHeartbeatTime).Seconds() > heartbeatThr {
 			//Il peer viene considerato caduto e viene rimosso dalla rete
 			utils.PrintEvent("DEAD_PEER_FOUND", fmt.Sprintf("Peer '%s' è morto", edgePeer.PeerAddr))
-			deadPeerConn, isInMap := peerMap.connections[edgePeer]
+			deadPeerConn, isInMap := r.connections[edgePeer]
 			if isInMap {
 				deadPeerConn.Close()
-				delete(peerMap.connections, edgePeer)
+				delete(r.connections, edgePeer)
 			}
-			delete(peerMap.heartbeats, edgePeer)
+			delete(r.heartbeats, edgePeer)
 			//PrintGraph(graphMap.peerMap)
 		}
 	}
-	peerMap.heartbeatCheckTime = time.Now()
+	r.heartbeatCheckTime = time.Now()
 }
 
 // Periodically check if network is connected
-func monitorNetwork() {
+func (r *RegistryService) monitorNetwork() {
 	monitorTimerString := utils.GetEnvironmentVariable("MONITOR_TIMER")
 	MONITOR_TIMER, err := strconv.ParseInt(monitorTimerString, 10, 64)
 	utils.ExitOnError("Impossibile fare il parsing di MONITOR_TIME", err)
 	for {
 		time.Sleep(time.Duration(MONITOR_TIMER) * time.Second)
-		solveNetworkPartitions()
+		r.solveNetworkPartitions()
 	}
 }
 
 // Checks for network partitions and solve them if any is found
-func solveNetworkPartitions() {
+func (r *RegistryService) solveNetworkPartitions() {
 	// Is a different function because network partitions solve is necessary for PeerExit and for PeerCrash too
-	peerMap.mutex.Lock()
-	defer peerMap.mutex.Unlock()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
-	graph := NewGraph()
+	graph := r.NewGraph()
 	PrintGraph(graph.graph)
 
 	connectedComponents := graph.FindConnectedComponents()
 
 	if len(connectedComponents) > 1 {
 		utils.PrintEvent("PARTITION_FOUND", "Trovata partizione di rete...")
-		unifyNetwork(connectedComponents)
+		r.unifyNetwork(connectedComponents)
 	}
 
 }
 
 // Solves network partitions.
 // Network partitions are solved connecting two consecutive components in components array
-func unifyNetwork(connectedComponents [][]EdgePeer) {
+func (r *RegistryService) unifyNetwork(connectedComponents [][]EdgePeer) {
 
 	for componentIndex := 0; componentIndex < len(connectedComponents)-1; componentIndex++ {
 		firstComponent := connectedComponents[componentIndex]
 		secondComponent := connectedComponents[componentIndex+1]
-		unifyTwoComponents(firstComponent, secondComponent)
+		r.unifyTwoComponents(firstComponent, secondComponent)
 	}
 }
 
 // Unifies two components of network
-func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
+func (r *RegistryService) unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 	createdAnEdge := false
 	for _, firstCompNode := range firstComponent {
 		for _, secondCompNode := range secondComponent {
@@ -91,8 +91,8 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 			}
 			if thereIsEdge {
 
-				firstNodeConn := peerMap.connections[firstCompNode]
-				secondNodeConn := peerMap.connections[secondCompNode]
+				firstNodeConn := r.connections[firstCompNode]
+				secondNodeConn := r.connections[secondCompNode]
 
 				call_1 := firstNodeConn.Go("EdgePeer.AddNeighbour", secondCompNode, 0, nil)
 				call_2 := secondNodeConn.Go("EdgePeer.AddNeighbour", firstCompNode, 0, nil)
@@ -114,10 +114,10 @@ func unifyTwoComponents(firstComponent []EdgePeer, secondComponent []EdgePeer) {
 	}
 }
 
-func findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
+func (r *RegistryService) findNeighboursForPeer(edgePeer EdgePeer) map[EdgePeer]byte {
 	createdEdge := false
 	neighboursList := map[EdgePeer]byte{}
-	for peer := range peerMap.heartbeats {
+	for peer := range r.heartbeats {
 		if peer == edgePeer {
 			continue
 		}

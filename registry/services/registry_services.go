@@ -11,16 +11,16 @@ import (
 	"time"
 )
 
-var peerMap PeerMap = PeerMap{
-	mutex:              sync.RWMutex{},
-	connections:        map[EdgePeer]*rpc.Client{},
-	heartbeatCheckTime: time.Now(),
-	heartbeats:         map[EdgePeer](time.Time){},
-}
-
 func ActAsRegistry() {
-	registryService := new(RegistryService)
-	err := rpc.Register(registryService)
+
+	registryService := RegistryService{
+		mutex:              sync.RWMutex{},
+		heartbeatCheckTime: time.Now(),
+		connections:        map[EdgePeer]*rpc.Client{},
+		heartbeats:         map[EdgePeer](time.Time){},
+	}
+
+	err := rpc.Register(&registryService)
 	if err != nil {
 		utils.ExitOnError("Impossibile registrare il servizio", err)
 	}
@@ -35,36 +35,36 @@ func ActAsRegistry() {
 
 	// go monitorNetwork()
 	go http.Serve(list, nil)
-	go checkHeartbeat()
-	go monitorNetwork()
+	go (&registryService).checkHeartbeat()
+	go (&registryService).monitorNetwork()
 }
 
 func (r *RegistryService) PeerEnter(edgePeer EdgePeer, replyPtr *map[EdgePeer]byte) error {
 	utils.PrintEvent("PEER_ENTERED", fmt.Sprintf("Nuovo peer '%s' rilevato!", edgePeer.PeerAddr))
 
-	peerMap.mutex.Lock()
-	defer peerMap.mutex.Unlock()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	peerConnection, err := connectToNode(edgePeer)
 	if err != nil {
 		return errors.New("impossibile stabilire connessione con il peer")
 	}
 
-	peerMap.connections[edgePeer] = peerConnection
-	peerMap.heartbeats[edgePeer] = time.Now()
+	r.connections[edgePeer] = peerConnection
+	r.heartbeats[edgePeer] = time.Now()
 
 	//PrintGraph(graphMap.peerMap)
-	neighboursList := findNeighboursForPeer(edgePeer)
+	neighboursList := r.findNeighboursForPeer(edgePeer)
 	*replyPtr = neighboursList
 	return nil
 }
 
 func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *int) error {
-	peerMap.mutex.Lock()
-	defer peerMap.mutex.Unlock()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 
 	edgePeer := heartbeatMessage.EdgePeer
-	_, ok := peerMap.heartbeats[heartbeatMessage.EdgePeer]
+	_, ok := r.heartbeats[heartbeatMessage.EdgePeer]
 	if !ok {
 		// Il peer non è presente nel sistema --> Era stato tolto oppure ho un recupero dal fallimento
 		utils.PrintEvent("ALIVE_PEER_FOUND", fmt.Sprintf("Peer '%s' è attivo!", edgePeer.PeerAddr))
@@ -75,10 +75,10 @@ func (r *RegistryService) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr 
 			return err
 		}
 
-		peerMap.connections[edgePeer] = peerConn
+		r.connections[edgePeer] = peerConn
 	}
 
-	peerMap.heartbeats[edgePeer] = time.Now()
+	r.heartbeats[edgePeer] = time.Now()
 
 	return nil
 }

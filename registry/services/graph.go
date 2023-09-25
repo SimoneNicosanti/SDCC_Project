@@ -10,17 +10,17 @@ type Graph struct {
 	graph map[EdgePeer](map[EdgePeer]byte)
 }
 
-func NewGraph() *Graph {
+func (r *RegistryService) NewGraph() *Graph {
 	graph := new(Graph)
 	graph.graph = map[EdgePeer](map[EdgePeer]byte){}
-	buildGraph(graph)
+	r.buildGraph(graph)
 	return graph
 }
 
-func buildGraph(graph *Graph) {
+func (r *RegistryService) buildGraph(graph *Graph) {
 	// Ottenimento dello stato attuale della rete
-	for peer, conn := range peerMap.connections {
-		_, hasHeartbeat := peerMap.heartbeats[peer]
+	for peer, conn := range r.connections {
+		_, hasHeartbeat := r.heartbeats[peer]
 		if hasHeartbeat {
 			neighboursPtr := new(map[EdgePeer]byte)
 			call := conn.Go("EdgePeer.GetNeighbours", 0, neighboursPtr, nil)
@@ -39,7 +39,7 @@ func buildGraph(graph *Graph) {
 	// Rimozione dei nodi che non hanno heartbeat
 	for _, nodeAdjs := range graph.graph {
 		for adj := range nodeAdjs {
-			_, hasHeartbeat := peerMap.heartbeats[adj]
+			_, hasHeartbeat := r.heartbeats[adj]
 			if !hasHeartbeat {
 				delete(nodeAdjs, adj)
 			}
@@ -87,14 +87,9 @@ func (g *Graph) recursiveConnectedComponentsResearch(peer EdgePeer, visitedMap m
 	peerNeighbours := g.graph[peer]
 	for neighbour := range peerNeighbours {
 		visited, isInMap := visitedMap[neighbour]
-		// Non è detto che il nodo sia chiave nel grafo
-		// Quando mi arriva heartbeat dopo ripresa del registry, il nodo mi dice i suoi vicini, ma io aggiungo solo il nodo da cui ho ricevuto heartbeat
 		if !visited && isInMap {
 			neighboursOfNeighbour := g.recursiveConnectedComponentsResearch(neighbour, visitedMap)
-			for index := range neighboursOfNeighbour {
-				foundPeers = append(foundPeers, neighboursOfNeighbour[index])
-				// TODO Controlla che gli elementi nella lista non siano duplicati
-			}
+			foundPeers = append(foundPeers, neighboursOfNeighbour...)
 		}
 	}
 	return foundPeers

@@ -12,7 +12,12 @@ import (
 	"time"
 )
 
-type RegistryService int
+type RegistryService struct {
+	mutex              sync.RWMutex
+	connections        map[EdgePeer]*rpc.Client
+	heartbeatCheckTime time.Time
+	heartbeats         map[EdgePeer](time.Time)
+}
 
 type EdgePeer struct {
 	PeerAddr string
