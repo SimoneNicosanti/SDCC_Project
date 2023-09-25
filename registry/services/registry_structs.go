@@ -23,13 +23,6 @@ type EdgePeer struct {
 	PeerAddr string
 }
 
-type PeerMap struct {
-	mutex              sync.RWMutex
-	connections        map[EdgePeer](*rpc.Client)
-	heartbeatCheckTime time.Time
-	heartbeats         map[EdgePeer](time.Time)
-}
-
 type HeartbeatMessage struct {
 	EdgePeer EdgePeer
 }
