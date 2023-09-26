@@ -157,10 +157,10 @@ func tryToSendFromOtherEdge(callbackChannel chan *peer.FileLookupResponse, reque
 			err := sendFromOtherEdge(*lookupReponse, requestMessage.FileName, downloadStream)
 			if err == nil {
 				// Se il download del file da un altro edge è andato a buon fine, non contattare S3 e smetti di aspettare ulteriori risposte
-				utils.PrintEvent("OTHEREDGE_DOWNLOAD_SUCCESS", fmt.Sprintf("Inviato il file '%s' da un altro edge.", requestMessage.FileName))
+				utils.PrintEvent("OTHER_EDGE_DOWNLOAD_SUCCESS", fmt.Sprintf("Inviato il file '%s' da un altro edge.", requestMessage.FileName))
 				return true
 			} else {
-				utils.PrintEvent("OTHEREDGE_DOWNLOAD_ERROR", fmt.Sprintf("Impossibile recuperare file '%s' da altro edge... Ripiego su S3\r\nError: '%s'", requestMessage.FileName, err.Error()))
+				utils.PrintEvent("OTHER_EDGE_DOWNLOAD_ERROR", fmt.Sprintf("Impossibile recuperare file '%s' da altro edge... Ripiego su S3\r\nError: '%s'", requestMessage.FileName, err.Error()))
 			}
 		case <-timer:
 			utils.PrintEvent("TIMEOUT_ERROR", fmt.Sprintf("Timeout nell'attesa per la ricerca del file '%s'. Nessuno ha risposto, ripiego su S3", requestMessage.FileName))

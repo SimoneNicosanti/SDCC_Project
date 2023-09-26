@@ -33,6 +33,7 @@ message FileDownloadRequest {
 
 message FileChunk {
     bytes chunk = 1;
+    int64 seqNum = 2;
 }
 
 message FileResponse {

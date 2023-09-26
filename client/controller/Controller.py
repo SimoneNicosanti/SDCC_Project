@@ -68,7 +68,7 @@ def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> boo
         # Otteniamo i chunks dalla chiamata gRPC
         chunks = stub.Download(FileDownloadRequest(requestId = requestId, fileName = filename))
         # Scriviamo i chunks in un file e ritorniamo l'esito della scrittura
-        return FileService().writeChunks(chunks = chunks, filename = filename)
+        return FileService().writeFile(chunk_list = chunks, filename = filename)
     except StopIteration as e:
         raise MyErrors.RequestFailedException("Errore durante la lettura dei chunks ricevuti.")
     except grpc.RpcError as e:
@@ -186,17 +186,26 @@ class FileService:
             yield fileChunk
             chunk = file.read(chunkSize)
 
-    def writeChunks(self, filename : str, chunks):
-        return self.downloadFile(chunk_list = chunks, filename = filename)
-        
-    def downloadFile(self, filename : str, chunk_list) -> bool:
-        chunk : FileChunk = next(chunk_list)
+    def writeFile(self, filename : str, chunk_list) -> bool:
         try:
             with open(os.environ.get("FILES_PATH") + filename, "wb") as file:
-                file.write(chunk.chunk)
-                for chunk in chunk_list:
-                    file.write(chunk.chunk)
+                self.writeChunks(file, chunk_list)
         except IOError as e:
             raise MyErrors.FailedToOpenException(f"Impossibile aprire file: {str(e)}")
 
         return True
+
+    def writeChunks(self, file, chunk_list):
+        #file.write(chunk.chunk)
+        seqNum = 0
+
+        for chunk in chunk_list:
+            #print(f"Chunk {seqNum}: {chunk.seqNum}")
+            if chunk.seqNum != seqNum:
+                if chunk.seqNum == 0:
+                    file.seek(0, 0)
+                    seqNum = 0
+                else:
+                    raise MyErrors.DownloadFailedException("Errore durante il download del file.")
+            file.write(chunk.chunk)
+            seqNum+=1

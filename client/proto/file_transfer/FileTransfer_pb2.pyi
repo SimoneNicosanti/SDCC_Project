@@ -37,10 +37,12 @@ class FileDownloadRequest(_message.Message):
     def __init__(self, fileName: _Optional[str] = ..., requestId: _Optional[str] = ...) -> None: ...
 
 class FileChunk(_message.Message):
-    __slots__ = ["chunk"]
+    __slots__ = ["chunk", "seqNum"]
     CHUNK_FIELD_NUMBER: _ClassVar[int]
+    SEQNUM_FIELD_NUMBER: _ClassVar[int]
     chunk: bytes
-    def __init__(self, chunk: _Optional[bytes] = ...) -> None: ...
+    seqNum: int
+    def __init__(self, chunk: _Optional[bytes] = ..., seqNum: _Optional[int] = ...) -> None: ...
 
 class FileResponse(_message.Message):
     __slots__ = ["requestId", "success"]

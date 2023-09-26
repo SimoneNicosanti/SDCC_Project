@@ -388,8 +388,8 @@ func writeChunksInCache(redirectionChannel redirection_channel.RedirectionChanne
 		// C'è stato un errore lato scrivente --> Rimozione file dalla cache
 		if message.Err != nil {
 			os.Remove(utils.GetEnvironmentVariable("FILES_PATH") + fileName)
-			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, err.Error()))
-			redirectionChannel.ReturnChannel <- err
+			utils.PrintEvent("CACHE_ABORT", fmt.Sprintf("Notifica di errore ricevuta. Il file '%s' non verrà quindi caricato nella cache.\r\nErrore restituito: '%s'", fileName, message.Err.Error()))
+			redirectionChannel.ReturnChannel <- message.Err
 			return message.Err
 		}
 

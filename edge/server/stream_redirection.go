@@ -83,15 +83,17 @@ func rcvAndRedirectChunks(mainRedirectionChannel redirection_channel.Redirection
 
 func redirectStreamToClient(clientRedirectionChannel redirection_channel.RedirectionChannel, clientDownloadStream file_transfer.FileService_DownloadServer) error {
 	defer close(clientRedirectionChannel.ReturnChannel)
+	var seqNumber int64 = 0
 	for message := range clientRedirectionChannel.MessageChannel {
 		if message.Err != nil {
 			return message.Err
 		}
-		err := clientDownloadStream.Send(&file_transfer.FileChunk{Chunk: message.Body})
+		err := clientDownloadStream.Send(&file_transfer.FileChunk{Chunk: message.Body, SeqNum: seqNumber})
 		if err != nil {
 			clientRedirectionChannel.ReturnChannel <- err
 			return err
 		}
+		seqNumber++
 	}
 	return nil
 }

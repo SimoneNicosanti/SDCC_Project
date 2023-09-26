@@ -150,6 +150,7 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *file_transfer.Fil
 
 	chunkSize := utils.GetIntEnvironmentVariable("CHUNK_SIZE")
 	buffer := make([]byte, chunkSize)
+	var seqNumber int64 = 0
 	for {
 		n, err := localFile.Read(buffer)
 		if err == io.EOF {
@@ -158,7 +159,8 @@ func (s *PeerFileServer) DownloadFromEdge(fileDownloadRequest *file_transfer.Fil
 		if err != nil {
 			return status.Error(codes.Code(file_transfer.ErrorCodes_FILE_READ_ERROR), "[*READ_ERROR*] -> Faliure durante l'operazione di lettura.\r")
 		}
-		downloadStream.Send(&file_transfer.FileChunk{Chunk: buffer[:n]})
+		downloadStream.Send(&file_transfer.FileChunk{Chunk: buffer[:n], SeqNum: seqNumber})
+		seqNumber++
 	}
 	return nil
 }

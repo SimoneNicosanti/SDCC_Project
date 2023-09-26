@@ -37,6 +37,8 @@ def main():
             Debug.errorDebug(e.message)
     option_interface(username)
 
+def printError(message : str):
+    colored_print(message, Color.RED)
 
 def option_interface(username:str):
     displayMenuBanner(username)
@@ -54,7 +56,7 @@ def option_interface(username:str):
                 colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
                 file_name = input("").strip()
                 if not file_name:
-                    colored_print("Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
+                    printError("Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
                 else:
                     break
             try:
@@ -65,33 +67,35 @@ def option_interface(username:str):
                 elif action == "delete":
                     perform_action(Method.DEL, file_name)
             except (MyErrors.InvalidMetadataException, MyErrors.ConnectionFailedException)  as e:
-                colored_print(f"Ci sono stati errori durante la connessione con il server. Ritenta.", Color.RED)
+                printError(f"Ci sono stati errori durante la connessione con il server. Ritenta.")
                 Debug.errorDebug(e.message)
             except MyErrors.RequestFailedException as e:
-                colored_print("Il server non è riuscito a soddisfare la richiesta a causa di qualche errore. Ritenta.", Color.RED)
+                printError("Il server non è riuscito a soddisfare la richiesta a causa di qualche errore. Ritenta.")
                 Debug.errorDebug(e.message)
             except MyErrors.FileNotFoundException  as e:
-                colored_print("File richiesto non trovato. Il nome del file è corretto?", Color.RED)
+                printError("File richiesto non trovato. Il nome del file è corretto?")
                 Debug.errorDebug(e.message)
             except MyErrors.FailedToOpenException as e:
-                colored_print("Impossibile aprire il file. Assicurati che il file esista.", Color.RED)
+                printError("Impossibile aprire il file. Assicurati che il file esista.")
                 Debug.errorDebug(e.message)
             except MyErrors.NoServerAvailableException as e:
-                colored_print("Nessun server è disponibile. Ritenta più tardi.", Color.RED)
+                printError("Nessun server è disponibile. Ritenta più tardi.")
                 Debug.errorDebug(e.message)
             except MyErrors.LocalFileNotFoundException as e:
-                colored_print("Il file non esiste in locale.", Color.RED)
+                printError("Il file non esiste in locale.")
                 Debug.errorDebug(e.message)
             except MyErrors.UnauthenticatedUserException as e:
-                colored_print("Utente non autorizzato. Impossibile procedere con la richiesta.", Color.RED)
+                printError("Utente non autorizzato. Impossibile procedere con la richiesta.")
                 Debug.errorDebug(e.message)
             except MyErrors.UnknownException as e:
-                colored_print("Errore non identificato. La richiesta non è stata soddisfatta.", Color.RED)
+                printError("Errore non identificato. La richiesta non è stata soddisfatta.")
                 Debug.errorDebug(e.message)
             except TimeoutError as e:
-                colored_print("Richiesta fallita. Per troppo tempo non è stata ricevuta risposta dal server.", Color.RED)
+                printError("Richiesta fallita. Per troppo tempo non è stata ricevuta risposta dal server.")
+            except MyErrors.DownloadFailedException as e:
+                printError("Errore ricevuto durante la ricezione del file.")
         else:
-            colored_print("Azione non valida. Riprova.", Color.RED)
+            printError("Azione non valida. Riprova.")
 
         print("")
 
