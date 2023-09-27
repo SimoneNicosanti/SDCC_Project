@@ -209,3 +209,22 @@ class FileService:
                     raise MyErrors.DownloadFailedException("Errore durante il download del file.")
             file.write(chunk.chunk)
             seqNum+=1
+
+
+class S3_Interface :
+
+    def download(self, fileName : str) :
+        import boto3
+        s3 = boto3.client('s3')
+        with open('FILE_NAME', 'wb') as f:
+            s3.download_fileobj(os.environ.get("S3_BUCKET_NAME"), fileName, f)
+
+    def upload(self, fileName : str) :
+        import boto3
+        s3 = boto3.client('s3')
+        with open("FILE_NAME", "rb") as f:
+            s3.upload_fileobj(f, os.environ.get("S3_BUCKET_NAME"), fileName)
+
+    def delete(self, fileName : str) :
+        import boto3
+        pass

@@ -26,3 +26,4 @@ ENV PYTHONPATH="$PYTHONPATH:/src/proto:/src/proto/file_transer"
 RUN pip3 install customtkinter
 
 RUN pip3 install jproperties
+RUN pip3 install boto3
