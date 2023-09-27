@@ -2,6 +2,6 @@ from enum import Enum
 
 
 class Method(Enum) :
-    GET = 0,
-    PUT = 1,
-    DEL = 2
+    DOWNLOAD = 0,
+    UPLOAD = 1,
+    DELETE = 2

@@ -62,3 +62,17 @@ B E N T O R N A T O   {addSpacesBetweenChars(username.upper())} !
 def addSpacesBetweenChars(input_string:str) -> str:
     spaced_string = ' '.join(input_string)
     return spaced_string
+
+def buildUploadFileName(fileName:str, username:str) -> str:
+    # Split del nome del file in base ed estensione (se presente)
+    parts = fileName.split('.')
+    # Se l'estensione del file non è presente, prendiamo l'intero nome del file come base
+    if len(parts) == 1:
+        base_name = parts[0]
+        extension = ''
+    else:
+        base_name = '.'.join(parts[:-1])
+        extension = parts[-1]
+    # Concatena il filename iniziale, lo username e l'estensione (se presente)
+    uploadFileName = f"{base_name}_{username}.{extension}" if extension else f"{base_name}_{username}"
+    return uploadFileName

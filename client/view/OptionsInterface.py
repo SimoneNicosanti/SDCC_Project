@@ -37,8 +37,10 @@ def main():
             Debug.errorDebug(e.message)
     option_interface(username)
 
-def printError(message : str):
+def printError(message : str, e : Exception = None):
     colored_print(message, Color.RED)
+    if e != None:
+        Debug.errorDebug(e.message)
 
 def option_interface(username:str):
     displayMenuBanner(username)
@@ -56,44 +58,38 @@ def option_interface(username:str):
                 colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
                 file_name = input("").strip()
                 if not file_name:
-                    printError("Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
+                    printError(None, "Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
                 else:
                     break
             try:
                 if action == "get":
-                    perform_action(Method.GET, file_name)
+                    perform_action(Method.DOWNLOAD, file_name)
                 elif action == "put":
-                    perform_action(Method.PUT, file_name)
+                    perform_action(Method.UPLOAD, file_name)
                 elif action == "delete":
-                    perform_action(Method.DEL, file_name)
+                    perform_action(Method.DELETE, file_name)
             except (MyErrors.InvalidMetadataException, MyErrors.ConnectionFailedException)  as e:
-                printError(f"Ci sono stati errori durante la connessione con il server. Ritenta.")
-                Debug.errorDebug(e.message)
+                printError(f"Ci sono stati errori durante la connessione con il server. Ritenta.", e)
             except MyErrors.RequestFailedException as e:
-                printError("Il server non è riuscito a soddisfare la richiesta a causa di qualche errore. Ritenta.")
-                Debug.errorDebug(e.message)
+                printError("Il server non è riuscito a soddisfare la richiesta a causa di qualche errore. Ritenta.", e)
             except MyErrors.FileNotFoundException  as e:
-                printError("File richiesto non trovato. Il nome del file è corretto?")
-                Debug.errorDebug(e.message)
+                printError("File richiesto non trovato. Il nome del file è corretto?", e)
             except MyErrors.FailedToOpenException as e:
-                printError("Impossibile aprire il file. Assicurati che il file esista.")
-                Debug.errorDebug(e.message)
+                printError("Impossibile aprire il file. Assicurati che il file esista.", e)
             except MyErrors.NoServerAvailableException as e:
-                printError("Nessun server è disponibile. Ritenta più tardi.")
-                Debug.errorDebug(e.message)
+                printError("Nessun server è disponibile. Ritenta più tardi.", e)
             except MyErrors.LocalFileNotFoundException as e:
-                printError("Il file non esiste in locale.")
-                Debug.errorDebug(e.message)
+                printError("Il file non esiste in locale.", e)
             except MyErrors.UnauthenticatedUserException as e:
-                printError("Utente non autorizzato. Impossibile procedere con la richiesta.")
-                Debug.errorDebug(e.message)
+                printError("Utente non autorizzato. Impossibile procedere con la richiesta.", e)
             except MyErrors.UnknownException as e:
-                printError("Errore non identificato. La richiesta non è stata soddisfatta.")
-                Debug.errorDebug(e.message)
+                printError("Errore non identificato. La richiesta non è stata soddisfatta.", e)
             except TimeoutError as e:
-                printError("Richiesta fallita. Per troppo tempo non è stata ricevuta risposta dal server.")
+                printError("Per troppo tempo non è stata ricevuta risposta dal server. Richiesta fallita.", e)
             except MyErrors.DownloadFailedException as e:
-                printError("Errore ricevuto durante la ricezione del file.")
+                printError("Errore ricevuto durante la ricezione del file.", e)
+            except MyErrors.S3Exception as e:
+                printError("S3 non è riuscito a soddisfare la richiesta.", e)
         else:
             printError("Azione non valida. Riprova.")
 

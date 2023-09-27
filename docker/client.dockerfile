@@ -20,6 +20,7 @@ RUN pip3 install grpcio
 RUN pip3 install grpcio-tools
 # To solve module import error
 ENV PYTHONPATH="$PYTHONPATH:/src/proto:/src/proto/file_transer"
+ENV AWS_SHARED_CREDENTIALS_FILE="/.aws"
 #======#
 # VIEW #
 #======#

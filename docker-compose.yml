@@ -14,6 +14,8 @@ services:
       - ./client:/src
       - ./proto:/proto
       - ./docker/client_files:/files
+      - ./docker/Results:/Results
+      - ./docker/aws:/.aws
     networks:
       - sdcc_network
     working_dir : /src
