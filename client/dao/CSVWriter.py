@@ -1,14 +1,18 @@
 import csv, os
 
-def writeTimeOnFile(outputFileName: str, timeValue : float, requestedFileName : str) :
+def writeTimeOnFile(outputFileName: str, timeValue : float, requestedFileName : str, requestType : str):
     filePath = os.path.join("/Results", outputFileName)
     
-    if not os.path.exists(filePath) :
-        with open(filePath, "wb") as file :
+    if not os.path.exists(filePath):
+        with open(filePath, "x+") as file:
             writer = csv.writer(file)
-            writer.writerow(["RequestedFileName", "FileSize", "Time"])
+            writer.writerow(["RequestType", "RequestedFileName", "FileSize [MB]", "Time [s]"])
 
-    with open(os.path.join("/Results", outputFileName), "wb") as file :
+    with open(os.path.join("/Results", outputFileName), "a") as file:
         writer = csv.writer(file)
-        fileSize = os.path.getsize(filename = os.environ.get("FILES_PATH") + requestedFileName)
-        writer.writerow(requestedFileName, fileSize, timeValue)
+        if requestType == "DELETE":
+            fileSize = "NaN"
+        else :
+            byteFileSize = os.path.getsize(filename = os.environ.get("FILES_PATH") + requestedFileName)
+            fileSize = float(byteFileSize) / 1048576.0
+        writer.writerow([requestType, requestedFileName, fileSize, timeValue])

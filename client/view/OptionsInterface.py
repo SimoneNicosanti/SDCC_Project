@@ -46,25 +46,25 @@ def option_interface(username:str):
     displayMenuBanner(username)
 
     while True:
-        colored_print("Inserisci l'azione (get/put/delete/clear/exit) >>> ", Color.YELLOW, end = "")
+        colored_print("Inserisci l'azione (download/upload/delete/clear/exit) >>> ", Color.YELLOW, end = "")
         action = input("").strip().lower()
         if action == "exit":
             clearScreen()
             return
         elif action == "clear":
             displayMenuBanner(username)
-        elif action in ["get", "put", "delete"]:
+        elif action in ["download", "upload", "delete"]:
             while True:
                 colored_print("Inserisci il nome del file >>> ", Color.YELLOW, end = "")
                 file_name = input("").strip()
                 if not file_name:
-                    printError(None, "Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.", Color.RED)
+                    printError("Non puoi richiedere un file con nome vuoto. Riprova inserendo il nome.")
                 else:
                     break
             try:
-                if action == "get":
+                if action == "download":
                     perform_action(Method.DOWNLOAD, file_name)
-                elif action == "put":
+                elif action == "upload":
                     perform_action(Method.UPLOAD, file_name)
                 elif action == "delete":
                     perform_action(Method.DELETE, file_name)

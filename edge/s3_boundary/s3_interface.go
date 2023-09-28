@@ -41,8 +41,8 @@ func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.Re
 
 	sess := getSession()
 	// Crea un downloader con la dimensione delle parti configurata
-	downloader := s3manager.NewDownloader(
-		sess,
+	downloader := s3manager.NewDownloaderWithClient(
+		s3.New(sess),
 		func(d *s3manager.Downloader) {
 			d.PartSize = getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE") //TODO capire perché non rispetta il parametro
 			d.Concurrency = 1

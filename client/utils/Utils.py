@@ -16,12 +16,6 @@ class Color:
 def colored_print(text, color, end = "\n"):
     print(f"{color}{text}{Color.RESET}", end = end)
 
-def readProperties(fileName : str, propertyName : str) -> str :
-    configs = jproperties.Properties()
-    with open(fileName, "rb") as propertiesFile :
-        configs.load(propertiesFile)
-        return configs.get(propertyName).data
-
 def clearScreen():
     if os.name == 'posix':
         os.system('clear')
