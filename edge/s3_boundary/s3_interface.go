@@ -4,6 +4,7 @@ import (
 	"edge/redirection_channel"
 	"edge/utils"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -13,6 +14,56 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
+
+type customDownloader struct {
+	PartSize int64
+	Client   *s3.S3
+	Writer   io.WriterAt
+	chunkNum int64
+}
+
+func newCustomDownloader(partSize int64, session *session.Session, writer io.WriterAt) *customDownloader {
+	return &customDownloader{
+		PartSize: partSize,
+		Client:   s3.New(session),
+		Writer:   writer,
+		chunkNum: 0,
+	}
+}
+
+func (d *customDownloader) Download(inputObject *s3.GetObjectInput) error {
+
+	fileSize, err := GetFileSize(*inputObject.Key)
+	if err != nil {
+		return err
+	}
+
+	var currentByte int64 = 0
+	chunkSize := getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE")
+	for currentByte < fileSize {
+		startByte := d.chunkNum * chunkSize
+		var endByte int64 = 0
+		if currentByte+chunkSize > fileSize {
+			endByte = fileSize
+		} else {
+			endByte = (d.chunkNum + 1) * chunkSize
+		}
+		inputObject.Range = aws.String(fmt.Sprintf("bytes=%d-%d", startByte, endByte))
+
+		objectOutput, err := d.Client.GetObject(inputObject)
+		if err != nil {
+			return err
+		}
+		defer objectOutput.Body.Close()
+		chunkBuffer := make([]byte, endByte-startByte+1)
+		objectOutput.Body.Read(chunkBuffer)
+		d.Writer.WriteAt(chunkBuffer, startByte)
+		d.chunkNum++
+		currentByte += (endByte - startByte + 1)
+	}
+
+	return nil
+}
 
 func SendToS3(fileName string, redirectionChannel redirection_channel.RedirectionChannel) {
 	uploadStreamReader := UploadStream{RedirectionChannel: redirectionChannel, ResidualChunk: make([]byte, 0)}
@@ -40,23 +91,44 @@ func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.Re
 	defer close(clientRedirectionChannel.MessageChannel)
 
 	sess := getSession()
-	// Crea un downloader con la dimensione delle parti configurata
-	downloader := s3manager.NewDownloaderWithClient(
-		s3.New(sess),
-		func(d *s3manager.Downloader) {
-			d.PartSize = getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE") //TODO capire perché non rispetta il parametro
-			d.Concurrency = 1
-		},
-	)
+	// svc := s3.New(sess)
 
-	// Esegui il download e scrivi i dati nello stream gRPC
-	_, err := downloader.Download(
+	inputObject := &s3.GetObjectInput{
+		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
+		Key:    aws.String(fileName),                                       //percorso file da scaricare
+	}
+
+	downloader := newCustomDownloader(
+		getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE"),
+		sess,
 		&downloadStreamWriter,
-		&s3.GetObjectInput{
-			Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
-			Key:    aws.String(fileName),                                       //percorso file da scaricare
-		},
 	)
+	err := downloader.Download(inputObject)
+
+	// objOutput, err := svc.GetObject(&s3.GetObjectInput{
+	// 	Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
+	// 	Key:    aws.String(fileName),                                       //percorso file da scaricare
+	// 	Range:  aws.String(fmt.Sprintf("bytes=%d-%d", 0, getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE"))),
+	// })
+	// fmt.Println(*objOutput.ContentLength)
+	// // Crea un downloader con la dimensione delle parti configurata
+	// downloader := s3manager.NewDownloader(
+	// 	sess,
+	// 	func(d *s3manager.Downloader) {
+	// 		d.PartSize = 10 * 1024 * 1024 //getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE") //TODO capire perché non rispetta il parametro
+	// 		//d.Concurrency = 1
+	// 	},
+	// )
+
+	// // Esegui il download e scrivi i dati nello stream gRPC
+	// _, err = downloader.Download(
+	// 	&downloadStreamWriter,
+	// 	&s3.GetObjectInput{
+	// 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
+	// 		Key:    aws.String(fileName),                                       //percorso file da scaricare
+	// 		Range:  aws.String(fmt.Sprintf("bytes=%d-%d", 0, getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE"))),
+	// 	},
+	// )
 	if err != nil {
 		customErr := fmt.Errorf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error())
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}

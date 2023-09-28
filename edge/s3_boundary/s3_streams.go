@@ -3,6 +3,7 @@ package s3_boundary
 import (
 	redirectionchannel "edge/redirection_channel"
 	"edge/utils"
+	"fmt"
 	"io"
 )
 
@@ -74,5 +75,6 @@ func (downloadStream *DownloadStream) writeAndRedirect(source []byte) (int, erro
 		copy(cacheCopy, source)
 		downloadStream.CacheChannel.MessageChannel <- redirectionchannel.Message{Body: cacheCopy, Err: nil}
 	}
+	fmt.Printf("INVIO CHUNK DI LUNGHEZZA %d\n", len(source))
 	return len(source), nil
 }
