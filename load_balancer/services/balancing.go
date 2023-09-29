@@ -20,6 +20,7 @@ func ActAsBalancer() {
 	setUpGRPC()
 	redisDB.PutOnRedis("edoardo", "edoardo")
 	redisDB.PutOnRedis("andrea", "andrea")
+	redisDB.PutOnRedis("simone", "simone")
 	utils.PrintEvent("BALANCER_STARTED", "Aspettando connessioni...")
 	go checkHeartbeat()
 }
