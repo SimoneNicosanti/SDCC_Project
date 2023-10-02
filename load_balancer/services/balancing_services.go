@@ -18,6 +18,7 @@ var balancingServer BalancingServiceServer = BalancingServiceServer{
 	edgeServerMap:      map[EdgeServer]int{},
 	heartbeatCheckTime: time.Now(),
 	heartbeats:         map[EdgeServer](time.Time){},
+	sequenceMutex:      sync.RWMutex{},
 	sequenceNumber:     0,
 }
 
@@ -42,14 +43,16 @@ func (balancingServer *BalancingServiceServer) GetEdge(ctx context.Context, user
 		return &proto.BalancerResponse{}, status.Error(codes.Unauthenticated, "User not authorized")
 	}
 	newRequestId := utils.ConvertToString(balancingServer.sequenceNumber)
+
+	balancingServer.sequenceMutex.Lock()
 	balancingServer.sequenceNumber++
+	balancingServer.sequenceMutex.Unlock()
 	return &proto.BalancerResponse{EdgeIpAddr: edgeIpAddr, RequestId: newRequestId}, nil
 }
 
 func (balancingServer *BalancingServiceServer) NotifyJobEnd(edgeServer EdgeServer, returnPtr *int) error {
 	defer convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
 	utils.PrintEvent("EDGE_SERVER_JOB_END", fmt.Sprintf("L'Edge Server '%s' ha completato il job", edgeServer.ServerAddr))
-	*returnPtr = 0
 
 	balancingServer.mapMutex.Lock()
 	defer balancingServer.mapMutex.Unlock()
@@ -58,6 +61,24 @@ func (balancingServer *BalancingServiceServer) NotifyJobEnd(edgeServer EdgeServe
 	if isInMap && value > 0 {
 		balancingServer.edgeServerMap[edgeServer]--
 	}
+
+	*returnPtr = 0
+	return nil
+}
+
+func (balancingServer *BalancingServiceServer) NotifyJobStart(edgeServer EdgeServer, returnPtr *int) error {
+	defer convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
+	utils.PrintEvent("EDGE_SERVER_JOB_END", fmt.Sprintf("L'Edge Server '%s' ha iniziato il job", edgeServer.ServerAddr))
+
+	balancingServer.mapMutex.Lock()
+	defer balancingServer.mapMutex.Unlock()
+
+	_, isInMap := balancingServer.edgeServerMap[edgeServer]
+	if isInMap {
+		balancingServer.edgeServerMap[edgeServer]++
+	}
+
+	*returnPtr = 0
 	return nil
 }
 

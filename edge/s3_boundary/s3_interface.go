@@ -50,10 +50,10 @@ func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.Re
 	inputObject := s3.GetObjectInput{
 		Bucket: aws.String(utils.GetEnvironmentVariable("S3_BUCKET_NAME")), //nome bucket
 		Key:    aws.String(fileName),                                       //percorso file da scaricare
-		Range:  nil,
 	}
 
 	// Crea un downloader con la dimensione delle parti configurata
+	// RequestOptions s3.request.Option
 	downloader := s3manager.NewDownloader(
 		sess,
 		func(d *s3manager.Downloader) {
@@ -152,6 +152,5 @@ func getS3ChunkSize(chunkTypeStr string) int64 {
 	if envVariable < 5 {
 		return 5 * MB
 	}
-	fmt.Println(envVariable * MB)
 	return envVariable * MB
 }

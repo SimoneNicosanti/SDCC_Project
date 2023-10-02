@@ -83,14 +83,25 @@ func (balancingServer *BalancingServiceServer) pickEdgeServer() (ipAddr string, 
 	if len(balancingServer.edgeServerMap) == 0 {
 		return "", fmt.Errorf("non ci sono edge servers disponibili")
 	}
+
+	var minLoadEdgeSlice []EdgeServer
 	var minLoadEdge EdgeServer
 	var minLoadValue = math.MaxInt
 	for edgeServer, serverLoad := range balancingServer.edgeServerMap {
 		if serverLoad < minLoadValue {
 			minLoadEdge = edgeServer
 			minLoadValue = serverLoad
+			minLoadEdgeSlice = []EdgeServer{edgeServer}
+		} else if serverLoad == minLoadValue {
+			minLoadEdgeSlice = append(minLoadEdgeSlice, edgeServer)
 		}
 	}
+	// Selezione randomica di uno degli edge con carico minimo
+	balancingServer.sequenceMutex.RLock()
+	minIndex := balancingServer.sequenceNumber % int64(len(minLoadEdgeSlice))
+	balancingServer.sequenceMutex.RUnlock()
+
+	minLoadEdge = minLoadEdgeSlice[minIndex]
 	balancingServer.edgeServerMap[minLoadEdge] = balancingServer.edgeServerMap[minLoadEdge] + 1
 	return minLoadEdge.ServerAddr, nil
 }
