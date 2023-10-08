@@ -8,7 +8,7 @@ RAGIONIAMO
 3] filtri di bloom ricerca nella rete --> OK
 4] la rete di edge fa caching (si appoggia di base su S3) --> OK
 5] interfaccia CLI --> OK
-6] meccanismo heartbeat al registry --> OK
+6] meccanismo heartbeat al registry + comunica num connessioni --> OK
 7] meccanismo ping edge-edge --> OK
 8] build graph periodico da parte del registry (pull sulle info sui neighbours + calcolo componenti connesse ed eventuale unificazione) --> OK
 9] timer sulle chiamate goRPC (evitiamo freeze della rete se succede qualcosa su un edge) --> OK
@@ -17,8 +17,6 @@ RAGIONIAMO
 12] quali sono le risorse limitate e come limitarle --> TUTTE QUELLE POSSIBILI (raspberryPI systems)
     -bisogna limitare:
         > CPU / MEMORIA --> cpu e memoria con docker 
-        > connessioni(numero di vicini / client serviti) --> abbiamo introdotto token / vedere se si può limitare il numero di connessioni direttamente su rpc
-        > thread? --> Problema per thread che gestiscono le richieste dei client o degli altri edge (legato al numero di )
 13] ricerca file hop by hop senza caching --> OK, se locale
 14] consistenza in generale + come gestire la cancellazione "distribuita" di un file: (NB: stabilire il livello di consistenza che si vuole raggiungere)
         IDEA: countdown_to_deletion su singolo file --> consistenza finale / nessuno scambio / unico costo è quello eventualmente di riaggiungerlo se fosse popolare (aiuta anche a resettare la popolarità)
@@ -36,7 +34,6 @@ RAGIONIAMO
 TODO TODO TODO TODO TODO TODO TODO TODO TODO
 ============================================
 x] ragionare sul problema del notify job end
-x] qual'è il modello di consistenza di S3?
 N-1] testing
         test rispetto a situazione di base (solo cloud)
         test molte get / test intermedio / test molte put (box plot su tempi di risposta)
@@ -45,5 +42,29 @@ N-1] testing
 N] inventare storiella per presentare (sistema di sensori IoT (?)) + PRESENTAZIONE
 N+1] risolvere ultimi TODO e pulizia codice (e.g. mettere lettere piccole a metodi che non vanno esportati / commentare sopra metodi cosa fanno)
 
-NOTE:
-Se non esiste nessun edge il load balancer non dovrebbe permettere al client di contattare direttamente S3?
+
+============================================
+NOVITA
+============================================
+aggiunta load balancer al posto della coda rabbit
+aggiunta operazione di delete distribuita
+cambiata gestione cache (concetto di popolarità introdotto + rimozione efficiente + rimozione periodica dopo tot tempo che aiuta anche con consistenza finale)
+        - c'è sempre possibilità che gli edge si rimbalzino il file e che non si raggiunga consistenza finale (contattare s3 ogni volta non sarebbe ottimale)
+        - ma MOOOOOOLTO raro... forse ha poco senso preoccuparsene (delete distribuita + cancellazioni periodiche + ...)
+lookup aggiornata (aggiunta di lookup_server per contatto diretto per la risposta + risultati multipli per backup)
+client ripiega autonomamente su S3 nel caso di fallimento del sistema
+procedura di login nel load balancer che si appoggia a redis --> identificazione file come 'file_username'
+        - redis esegue sullo stesso nodo del load balancer, va bene?
+se il nodo da cui scarichiamo un file di grandi dimensioni subisce una failure noi lo riscarichiamo dall'inizio da un edge di backup che ci aveva risposto correttamente
+        - oltretutto se non facessimo così e il file cambia non gestendo il versioning si mischierebbero due file
+
+ISSUE SU GITHUB NON RISPOSTA... come facciamo i test?
+
+PROBLEMA NOTIFY JOB END
+        IDEA_1: Quando il load balancer restituisce un edge al client, creo anche una connessione load_balancer <-> edge per comunicare se effettivamente
+                sia stato contattato o meno. Creo un timer su questa connessione per attendere una notifica da parte dell'edge che la manda solo se il client
+                lo contatta. 
+                MA --> pesante ma almeno non crescono all'infinito
+        IDEA_2: Basarsi sempre su ciò che dice l'edge nell'heartbeat 
+                MA --> se mi segno x > y richieste dove y è quello che ho ricevuto nell'hearbeat rischio di sovraccaricare fino al prossimo heartbeat
+        ALTRIMENTI COME FARE?
