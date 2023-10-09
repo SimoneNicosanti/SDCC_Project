@@ -36,8 +36,12 @@ TODO TODO TODO TODO TODO TODO TODO TODO TODO
 x] ragionare sul problema del notify job end
 N-1] testing
         test rispetto a situazione di base (solo cloud)
-        test molte get / test intermedio / test molte put (box plot su tempi di risposta)
-        test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
+        mix variabile (configurabile) in cui ho localmente una percentuale dei file richiesti 
+                (in cache, il resto dei file sono negli altri nodi edge così evitiamo di contattare il cloud evitando il BUG)
+                e farlo variando dimensione di file e percentuale di località dei file
+
+        test molte get (nel modo che abbiamo appena detto) / test intermedio / test molte put (box plot su tempi di risposta)
+        locale al variare del numero di nodi edge es: una decina di edge
         come i parametri di configurazione influenzano le prestazioni
 N] inventare storiella per presentare (sistema di sensori IoT (?)) + PRESENTAZIONE
 N+1] risolvere ultimi TODO e pulizia codice (e.g. mettere lettere piccole a metodi che non vanno esportati / commentare sopra metodi cosa fanno)
@@ -68,3 +72,4 @@ PROBLEMA NOTIFY JOB END
         IDEA_2: Basarsi sempre su ciò che dice l'edge nell'heartbeat 
                 MA --> se mi segno x > y richieste dove y è quello che ho ricevuto nell'hearbeat rischio di sovraccaricare fino al prossimo heartbeat
         ALTRIMENTI COME FARE?
+                meccanismo pesato sulle due informazioni --> media pesata sui due valori.
