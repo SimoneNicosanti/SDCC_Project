@@ -77,6 +77,12 @@ func GetIntEnvironmentVariable(variableName string) int {
 	return int(variableInt)
 }
 
+func GetFloatEnvironmentVariable(variableName string) float64 {
+	variableFloat, err := strconv.ParseFloat(GetEnvironmentVariable(variableName), 64)
+	ExitOnError("Impossibile convertire la variabile "+variableName, err)
+	return variableFloat
+}
+
 func GetMyIPAddr() (string, error) {
 	addresses, err := net.InterfaceAddrs()
 	if err != nil {

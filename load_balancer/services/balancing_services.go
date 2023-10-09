@@ -66,21 +66,21 @@ func (balancingServer *BalancingServiceServer) NotifyJobEnd(edgeServer EdgeServe
 	return nil
 }
 
-func (balancingServer *BalancingServiceServer) NotifyJobStart(edgeServer EdgeServer, returnPtr *int) error {
-	defer convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
-	utils.PrintEvent("EDGE_SERVER_JOB_END", fmt.Sprintf("L'Edge Server '%s' ha iniziato il job", edgeServer.ServerAddr))
+// func (balancingServer *BalancingServiceServer) NotifyJobStart(edgeServer EdgeServer, returnPtr *int) error {
+// 	defer convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
+// 	utils.PrintEvent("EDGE_SERVER_JOB_END", fmt.Sprintf("L'Edge Server '%s' ha iniziato il job", edgeServer.ServerAddr))
 
-	balancingServer.mapMutex.Lock()
-	defer balancingServer.mapMutex.Unlock()
+// 	balancingServer.mapMutex.Lock()
+// 	defer balancingServer.mapMutex.Unlock()
 
-	_, isInMap := balancingServer.edgeServerMap[edgeServer]
-	if isInMap {
-		balancingServer.edgeServerMap[edgeServer]++
-	}
+// 	_, isInMap := balancingServer.edgeServerMap[edgeServer]
+// 	if isInMap {
+// 		balancingServer.edgeServerMap[edgeServer]++
+// 	}
 
-	*returnPtr = 0
-	return nil
-}
+// 	*returnPtr = 0
+// 	return nil
+// }
 
 func (balancingServer *BalancingServiceServer) Heartbeat(heartbeatMessage HeartbeatMessage, replyPtr *int) error {
 	*replyPtr = 0
@@ -94,6 +94,12 @@ func (balancingServer *BalancingServiceServer) Heartbeat(heartbeatMessage Heartb
 		utils.PrintEvent("ACTIVE_EDGE_SERVER_FOUND", fmt.Sprintf("Edge Server '%s' è attivo!", edgeServer.ServerAddr))
 		balancingServer.edgeServerMap[edgeServer] = heartbeatMessage.CurrentLoad
 		convertAndPrintEdgeServerMap(balancingServer.edgeServerMap)
+	} else {
+		// Aggiorna il carico dell'edge con la media pesata tra il carico corrente e quello ricevuto dall'edge
+		receivedWorkloadWeight := utils.GetFloatEnvironmentVariable("RECEIVED_WORKLOAD_WEIGHT")
+		weightedCurrentLoad := float64(balancingServer.edgeServerMap[edgeServer]) * (1 - receivedWorkloadWeight)
+		weightedReceivedLoad := float64(heartbeatMessage.CurrentLoad) * receivedWorkloadWeight
+		balancingServer.edgeServerMap[edgeServer] = int(weightedCurrentLoad + weightedReceivedLoad)
 	}
 
 	balancingServer.heartbeats[edgeServer] = time.Now()
