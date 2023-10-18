@@ -16,16 +16,7 @@ func pingsToAdjacents() {
 	}
 }
 
-func getConnections() {
-	//TODO finire copia mappa dei vicini
-	sourceSlice := adj...
-	destinationSlice := make([]int, len(sourceSlice))
-
-    	copy(destinationSlice, sourceSlice)
-}
-
 func pingFunction() {
-	connections := getConnections()
 	adjacentsMap.connsMutex.Lock()
 	defer adjacentsMap.connsMutex.Unlock()
 
