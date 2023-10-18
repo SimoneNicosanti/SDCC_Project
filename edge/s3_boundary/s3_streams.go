@@ -11,6 +11,8 @@ type DownloadStream struct {
 	ClientChannel   redirectionchannel.RedirectionChannel
 	CacheChannel    redirectionchannel.RedirectionChannel
 	IsFileCacheable bool
+	DownloadBuffer  []byte
+	FlushSize       int64
 }
 
 type UploadStream struct {
@@ -52,19 +54,36 @@ func (uploadStream *UploadStream) Read(dest []byte) (bytesInDest int, err error)
 	return len(dest), nil
 }
 
-func (downloadStream *DownloadStream) WriteAt(source []byte, off int64) (bytesSent int, err error) {
+func (downloadStream *DownloadStream) WriteAt(source []byte, off int64) (sent int, err error) {
 	select {
 	case err := <-downloadStream.ClientChannel.ReturnChannel:
-		return 0, err
+		return -1, err
 	case <-downloadStream.CacheChannel.ReturnChannel:
 		downloadStream.IsFileCacheable = false
 	default:
 		break
 	}
-	return downloadStream.writeAndRedirect(source)
+	// since we have no guarantee on 1:1 correspondence on what is passed to WriteAt we buffer the source until the desired size
+	// but we still have problems with huge download times...
+	if len(downloadStream.DownloadBuffer)+len(source) < int(downloadStream.FlushSize) {
+		fmt.Printf("Buffered %d bytes\n", len(source))
+		downloadStream.DownloadBuffer = append(downloadStream.DownloadBuffer, source...)
+		return len(source), nil
+	}
+	_, err = downloadStream.writeAndRedirect(downloadStream.DownloadBuffer[0:len(downloadStream.DownloadBuffer)])
+	fmt.Printf("FLUSHED %d bytes\n", len(downloadStream.DownloadBuffer))
+	downloadStream.DownloadBuffer = downloadStream.DownloadBuffer[:]
+	return 0, err
 }
 
-func (downloadStream *DownloadStream) writeAndRedirect(source []byte) (int, error) {
+func (downloadStream *DownloadStream) Flush() (int, error) {
+	if len(downloadStream.DownloadBuffer) > 0 {
+		return downloadStream.writeAndRedirect(downloadStream.DownloadBuffer[0:len(downloadStream.DownloadBuffer)])
+	}
+	return 0, nil
+}
+
+func (downloadStream *DownloadStream) writeAndRedirect(source []byte) (redirected int, err error) {
 	clientCopy := make([]byte, len(source))
 	copy(clientCopy, source)
 	downloadStream.ClientChannel.MessageChannel <- redirectionchannel.Message{Body: clientCopy, Err: nil}

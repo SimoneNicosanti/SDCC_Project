@@ -4,18 +4,18 @@ from proto.file_transfer.FileTransfer_pb2_grpc import *
 import os, io
 
 def getChunks(filename):
-            try:
-                with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
-                    chunkSize = int(os.environ.get("CHUNK_SIZE"))
-                    chunk = file.read(chunkSize)            
-                    while chunk:
-                        Debug.debug("Inviato un chunk di " + str(len(chunk)) + " bytes")
-                        fileChunk : FileChunk = FileChunk(chunk = chunk)
-                        yield fileChunk
-                        chunk = file.read(chunkSize)
+    try:
+        with open(os.environ.get("FILES_PATH") + filename, "rb") as file :
+            chunkSize = int(os.environ.get("CHUNK_SIZE"))
+            chunk = file.read(chunkSize)            
+            while chunk:
+                Debug.debug("Inviato un chunk di " + str(len(chunk)) + " bytes")
+                fileChunk : FileChunk = FileChunk(chunk = chunk)
+                yield fileChunk
+                chunk = file.read(chunkSize)
 
-            except Exception as e:
-                print(e)
+    except Exception as e:
+        print(e)
 
 def readFile(file : io.BufferedReader):
     chunkSize = int(os.environ.get("CHUNK_SIZE"))
@@ -40,8 +40,8 @@ def writeFile(filename : str, chunk_list) -> bool:
 
 def writeChunks(file, chunk_list):
     seqNum = 0
-
     for chunk in chunk_list:
+        Debug.debug("Ricevuto un chunk di " + str(len(chunk.chunk)) + " bytes")
         if chunk.seqNum != seqNum:
             if chunk.seqNum == 0:
                 file.seek(0, 0)

@@ -17,10 +17,10 @@ type AdjConnection struct {
 }
 
 type AdjacentPeers struct {
-	connsMutex   sync.RWMutex
-	peerConns    map[EdgePeer](AdjConnection)
-	filtersMutex sync.RWMutex
-	filterMap    map[EdgePeer](*bloom.StableBloomFilter)
+	connsMutex   sync.RWMutex                            // Mutex per accedere alla mappa delle connessioni con i vicini
+	peerConns    map[EdgePeer](AdjConnection)            // Mappa delle connessioni con gli edge vicini
+	filtersMutex sync.RWMutex                            // Filtri di Bloom e connessioni dei vicini non sono usati sempre insieme, quindi sono presenti due mutex differenti
+	filterMap    map[EdgePeer](*bloom.StableBloomFilter) // Mappa dei filtri di Bloom dei vicini
 }
 
 type BloomFilterMessage struct {

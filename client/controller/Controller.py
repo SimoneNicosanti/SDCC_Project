@@ -86,6 +86,9 @@ def downloadFile(filename : str, requestId : str, stub : FileServiceStub) -> boo
     except StopIteration as e:
         raise MyErrors.RequestFailedException("Errore durante la lettura dei chunks ricevuti.")
     except grpc.RpcError as e:
+        if os.path.exists(os.environ.get("FILES_PATH") + filename):
+            os.remove(os.environ.get("FILES_PATH") + filename)
+            Debug.debug(f"Il file {filename} è stato eliminato.")
         manageGRPCError(e)
 
 

@@ -41,6 +41,8 @@ func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.Re
 		ClientChannel:   clientRedirectionChannel,
 		CacheChannel:    cacheRedirectionChannel,
 		IsFileCacheable: isFileCachable,
+		DownloadBuffer:  []byte{},
+		FlushSize:       getS3ChunkSize("S3_DOWNLOAD_CHUNK_SIZE"),
 	}
 	defer close(cacheRedirectionChannel.MessageChannel)
 	defer close(clientRedirectionChannel.MessageChannel)
@@ -67,6 +69,16 @@ func SendFromS3(fileName string, clientRedirectionChannel redirection_channel.Re
 		&downloadStreamWriter,
 		&inputObject,
 	)
+	if err != nil {
+		customErr := fmt.Errorf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error())
+		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
+		if isFileCachable {
+			cacheRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}
+		}
+		return err
+	}
+
+	_, err = (&downloadStreamWriter).Flush()
 	if err != nil {
 		customErr := fmt.Errorf("Errore nella download del file '%s'\r\nL'errore restituito è: '%s'", fileName, err.Error())
 		clientRedirectionChannel.MessageChannel <- redirection_channel.Message{Body: []byte{}, Err: customErr}

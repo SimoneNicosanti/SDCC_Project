@@ -16,48 +16,80 @@ func pingsToAdjacents() {
 	}
 }
 
-func pingFunction() {
-	adjacentsMap.connsMutex.Lock()
-	defer adjacentsMap.connsMutex.Unlock()
+func cloneConnectionsMap() map[EdgePeer]AdjConnection {
+	sourceMap := adjacentsMap.peerConns
+	destinationMap := make(map[EdgePeer]AdjConnection, len(sourceMap))
 
-	for adjPeer, adjConn := range adjacentsMap.peerConns {
+	for key, value := range sourceMap {
+		destinationMap[key] = value
+	}
+
+	return destinationMap
+}
+
+func pingFunction() {
+	// Per evitare di bloccare la struttura delle connessioni troppo a lungo, ne facciamo una copia e lavoriamo su quella. Ogni volta che
+	// si rende necessaria una modifica, allora prendiamo il lock
+	adjacentsMap.connsMutex.Lock()
+	connections := cloneConnectionsMap()
+	adjacentsMap.connsMutex.Unlock()
+
+	// NB: Stiamo lavorando su una copia della mappa, quindi le modifiche vanno fatte sulla struttura originale
+	for adjPeer, adjConn := range connections {
 		call := adjConn.peerConnection.Go("EdgePeer.Ping", SelfPeer, new(int), nil)
 		select {
 		case <-call.Done:
 			if call.Error != nil {
-				timeoutAction(adjConn, adjPeer)
+				timeoutAction(adjPeer)
 				break
 			}
 			// Se il peer risponde, allora azzero il numero di ping mancati
-			adjConn.missedPing = 0
-			adjacentsMap.peerConns[adjPeer] = adjConn
+			// Prima di effettuare la modifica sulla struttura globale, prendiamo il lock
+			adjacentsMap.connsMutex.Lock()
+			connection, isStillInMap := adjacentsMap.peerConns[adjPeer]
+			if isStillInMap {
+				connection.missedPing = 0
+				adjacentsMap.peerConns[adjPeer] = connection
+			}
+			adjacentsMap.connsMutex.Unlock()
 		case <-time.After(time.Second * time.Duration(utils.GetInt64EnvironmentVariable("MAX_WAITING_TIME_FOR_PING"))):
 			// Il peer non risponde al Ping per X volte consecutive --> Rimozione dalla lista
-			timeoutAction(adjConn, adjPeer)
+			timeoutAction(adjPeer)
 		}
 	}
 }
 
-func timeoutAction(adjConn AdjConnection, adjPeer EdgePeer) {
-	adjConn.missedPing++
-	adjacentsMap.peerConns[adjPeer] = adjConn
-	utils.PrintEvent("PING_MISSED", fmt.Sprintf("Nessuna risposta da '%s' per la %d volta", adjPeer.PeerAddr, adjConn.missedPing))
+func timeoutAction(adjPeer EdgePeer) {
+	// Stiamo lavorando su una copia della mappa globale, quindi prima controlliamo che la connessione effettivamente esista.
+	connection, isStillInMap := adjacentsMap.peerConns[adjPeer]
+	if isStillInMap {
+		// SEZIONE CRITICA ------------------------------------------------------------------------------
+		adjacentsMap.connsMutex.Lock()
+		defer adjacentsMap.connsMutex.Unlock()
+		connection.missedPing++
+		adjacentsMap.peerConns[adjPeer] = connection
+		utils.PrintEvent("PING_MISSED", fmt.Sprintf("Nessuna risposta da '%s' per la %d volta", adjPeer.PeerAddr, connection.missedPing))
 
-	if adjConn.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
-		adjacentsMap.peerConns[adjPeer].peerConnection.Close()
-		delete(adjacentsMap.peerConns, adjPeer)
-		removeBloomFilter(adjPeer)
-		utils.PrintEvent("NEIGHBOUR_REMOVED", fmt.Sprintf("Il vicino '%s' è stato rimosso dopo %d missed pings", adjPeer.PeerAddr, adjConn.missedPing))
+		if connection.missedPing >= utils.GetIntEnvironmentVariable("MAX_MISSED_PING") {
+			adjacentsMap.peerConns[adjPeer].peerConnection.Close()
+			delete(adjacentsMap.peerConns, adjPeer)
+			removeBloomFilter(adjPeer)
+			utils.PrintEvent("NEIGHBOUR_REMOVED", fmt.Sprintf("Il vicino '%s' è stato rimosso dopo %d missed pings", adjPeer.PeerAddr, connection.missedPing))
+		}
+		// FINE SEZIONE CRITICA -------------------------------------------------------------------------
 	}
+
 }
 
 func removeBloomFilter(adjPeer EdgePeer) {
+	// SEZIONE CRITICA ------------------------------------------------------------------------------
 	adjacentsMap.filtersMutex.Lock()
 	defer adjacentsMap.filtersMutex.Unlock()
 
 	adjPeerConnection := adjacentsMap.peerConns[adjPeer]
 	adjPeerConnection.missedPing = 0
 	delete(adjacentsMap.filterMap, adjPeer)
+	// FINE SEZIONE CRITICA -------------------------------------------------------------------------
 }
 
 func Sprintf(s1, s2 string, i int) {
