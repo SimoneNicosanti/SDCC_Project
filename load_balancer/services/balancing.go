@@ -21,6 +21,7 @@ func ActAsBalancer() {
 	redisDB.PutOnRedis("edoardo", "edoardo")
 	redisDB.PutOnRedis("andrea", "andrea")
 	redisDB.PutOnRedis("simone", "simone")
+	redisDB.PutOnRedis("test", "test")
 	utils.PrintEvent("BALANCER_STARTED", "Aspettando connessioni...")
 	go checkHeartbeat()
 }

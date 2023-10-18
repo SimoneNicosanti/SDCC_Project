@@ -15,7 +15,7 @@ data = None
 userInfo : User = User(username="a",passwd="a")
 sem : Semaphore = Semaphore()
 
-def sendRequestForFile(requestType : Method, fileName : str) -> bool:
+def sendRequestForFile(requestType : Method, fileName : str, writeTime : bool = False) -> bool:
     global userInfo
     if requestType == Method.UPLOAD and not os.path.exists(os.environ.get("FILES_PATH") + fileName):
         raise MyErrors.LocalFileNotFoundException("Il file da caricare non esiste in locale.")
@@ -26,7 +26,8 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
         startTime = time.time()
         S3Controller.serveRequestDirectlyFromS3(requestType=requestType, fileName=fileName, username=userInfo.username)
         endTime = time.time()
-        CSVWriter.writeTimeOnFile("S3_Direct.csv", endTime - startTime, fileName, requestType.name)
+        if (writeTime) :
+            CSVWriter.writeTimeOnFile("S3_Direct.csv", endTime - startTime, fileName, requestType.name)
         return True
 
     # Preparazione chiamata gRPC
@@ -41,7 +42,8 @@ def sendRequestForFile(requestType : Method, fileName : str) -> bool:
     startTime = time.time()
     response = execAction(requestId = response.requestId, requestType = requestType, fileName = fileName, stub = stub)
     endTime = time.time()
-    CSVWriter.writeTimeOnFile("With_System.csv", endTime - startTime, fileName, requestType.name)
+    if (writeTime) :
+        CSVWriter.writeTimeOnFile("With_System.csv", endTime - startTime, fileName, requestType.name)
     return response
 
 def getEdgeFromBalancer() -> BalancerResponse:
