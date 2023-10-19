@@ -24,10 +24,11 @@ RAGIONIAMO
         IDEA: sistema locale ma storage pubblico --> login (versioning solo tra i vari "client") 
                 es: sensore 2 usa file di sensore 6 allora lui sa che deve richiedere "get pump_data_u6.csv" --> ogni user è responsabile del versioning dei suoi file
 16] testing:
-        test rispetto a situazione di base (solo cloud)
-        test molte get / test intermedio / test molte put (box plot su tempi di risposta)
-        test su scale differenti (EC2 o locale al variare del numero di nodi edge es: una decina di edge)
-        come i parametri di configurazione influenzano le prestazioni
+        test rispetto a situazione di base (solo cloud) rispetto al sistema (sempre cache hit 1 edge / lookup o download da zero 5 edge) 
+                test su size differenti SEQUENZIALE
+
+        test molte get / test intermedio / test molte put (box plot su tempi di risposta) -TEST DI CARICO (parallelo)
+        al variare del numero di nodi edge es: una decina di edge max
 
 
 ============================================

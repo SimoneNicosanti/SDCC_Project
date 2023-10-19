@@ -27,7 +27,7 @@ def sendRequestForFile(requestType : Method, fileName : str, writeTime : bool = 
         S3Controller.serveRequestDirectlyFromS3(requestType=requestType, fileName=fileName, username=userInfo.username)
         endTime = time.time()
         if (writeTime) :
-            CSVWriter.writeTimeOnFile("S3_Direct.csv", endTime - startTime, fileName, requestType.name)
+            CSVWriter.writeTimeOnFile(endTime - startTime, fileName, requestType.name)
         return True
 
     # Preparazione chiamata gRPC
@@ -43,7 +43,7 @@ def sendRequestForFile(requestType : Method, fileName : str, writeTime : bool = 
     response = execAction(requestId = response.requestId, requestType = requestType, fileName = fileName, stub = stub)
     endTime = time.time()
     if (writeTime) :
-        CSVWriter.writeTimeOnFile("With_System.csv", endTime - startTime, fileName, requestType.name)
+        CSVWriter.writeTimeOnFile(endTime - startTime, fileName, requestType.name)
     return response
 
 def getEdgeFromBalancer() -> BalancerResponse:
