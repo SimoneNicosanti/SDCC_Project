@@ -49,6 +49,7 @@ if [ $1 = "down_cache" ]
 then
     echo "TEST WITH CACHE FILES"
     ## First upload all files
+    echo "UPLOADING FILES"
     docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 5mb.txt -e $2 -w NO
     echo
     docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 10mb.txt -e $2 -w NO
@@ -58,9 +59,10 @@ then
     docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 30mb.txt -e $2 -w NO
     echo
 
+    echo "STARTING DOWNLOAD"
     for i in $( seq 1 $MAX_RUN )
     do
-        docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 5mb.txt -e $2 -w Sequential.csv
+        docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 5mb_test.txt -e $2 -w Sequential.csv
         echo
         docker exec -t -i sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 10mb_test.txt -e $2 -w Sequential.csv
         echo

@@ -25,7 +25,7 @@ def downloadFileFromS3(fileName : str) :
         aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY"),
         aws_session_token = os.environ.get("AWS_SESSION_TOKEN"),
         region_name = os.environ.get("AWS_REGION"),
-        config = getS3Config()
+        #config = getS3Config()
     )
     with open(os.environ.get("FILES_PATH") + fileName, 'wb') as f:
         s3.download_fileobj(os.environ.get("S3_BUCKET_NAME"), fileName, f)
@@ -37,7 +37,7 @@ def uploadFileToS3(fileName : str, username : str):
         aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY"),
         aws_session_token = os.environ.get("AWS_SESSION_TOKEN"),
         region_name = os.environ.get("AWS_REGION"),
-        config = getS3Config()
+        #config = getS3Config()
     )
     with open(os.environ.get("FILES_PATH") + fileName, "rb") as f:
         s3.upload_fileobj(f, os.environ.get("S3_BUCKET_NAME"), Utils.buildUploadFileName(fileName=fileName, username=username))
@@ -49,7 +49,7 @@ def deleteFileFromS3(fileName : str):
         aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY"),
         aws_session_token = os.environ.get("AWS_SESSION_TOKEN"),
         region_name = os.environ.get("AWS_REGION"),
-        config = getS3Config()
+        #config = getS3Config()
     )
     s3.delete_object(Bucket=os.environ.get("S3_BUCKET_NAME"), Key=fileName)
 

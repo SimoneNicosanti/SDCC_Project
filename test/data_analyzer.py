@@ -5,9 +5,19 @@ import matplotlib.pyplot as plt
 
 def main() :
     sequential_data_analyze()
+    # parallel_data_analyze()
+
+def parallel_data_analyze() :
+    line_plot("Parallel")
+    return
 
 def sequential_data_analyze() :
-    dataframe : pd.DataFrame = pd.read_csv("../docker/Results/Sequential.csv")
+    line_plot("Sequential")
+    return
+
+
+def line_plot(fileName : str) :
+    dataframe : pd.DataFrame = pd.read_csv("../docker/Results/" + fileName + ".csv")
     
     renamedDataframe = dataframe.rename(columns = {"FileSize [MB]" : "FileSize", "Time [s]" : "Time"})
     # renamedDataframe = renamedDataframe[renamedDataframe.FileSize < 100]
@@ -24,17 +34,39 @@ def sequential_data_analyze() :
             figure.plot(
                 chartDataFrame["FileSize"], 
                 chartDataFrame["Time"], 
-                label = "#Edges = " + str(edgeNum)
+                label = "#Edges = " + str(edgeNum),
+                marker = "o"
             )
             figure.set_xlabel("FileSize [MB]")
             figure.set_ylabel("Time [s]")
         
         plt.legend()
         plt.title(operation)
-        plt.savefig("../docker/Results/Charts/Sequential/" + operation)
+        plt.grid()
+        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation)
 
         plt.clf()
+
+        figure = plt.subplot()
+        for edgeNum in operationDataFrame["EdgeNum"].unique() :
+            chartDataFrame : pd.DataFrame = operationDataFrame[(operationDataFrame.EdgeNum == edgeNum) & (operationDataFrame.FileSize <= 30)]
+            figure.plot(
+                chartDataFrame["FileSize"], 
+                chartDataFrame["Time"], 
+                label = "#Edges = " + str(edgeNum),
+                marker = "o"
+            )
+            figure.set_xlabel("FileSize [MB]")
+            figure.set_ylabel("Time [s]")
+        
+        plt.legend()
+        plt.title(operation)
+        plt.grid()
+        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation + "_CUT")
+        plt.clf()
     return
+
+
 
 
 if __name__ == "__main__" :
