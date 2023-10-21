@@ -1,8 +1,7 @@
 #!/bin/bash
-cd ../
 
-docker compose down
-docker compose up --scale edge=$1 --detach
+docker compose down 
+docker compose -f ../docker-compose.yml up --scale edge=$1 --detach
 
 ## Balancer
 echo
