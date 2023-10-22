@@ -5,15 +5,14 @@ import matplotlib.pyplot as plt
 
 def main() :
     sequential_data_analyze()
-    # parallel_data_analyze()
+    parallel_data_analyze()
 
 def parallel_data_analyze() :
     line_plot("Parallel")
     return
 
 def sequential_data_analyze() :
-    #line_plot("Sequential")
-    box_plot("Sequential")
+    line_plot("Sequential")
     return
 
 
@@ -30,6 +29,7 @@ def line_plot(fileName : str) :
         operationDataFrame : pd.DataFrame = avgDataframe[avgDataframe.RequestType == operation]
         ## Per ogni edgeNum traccio una curva
         figure = plt.subplot()
+        figure.set_facecolor('#292626')
         for edgeNum in operationDataFrame["EdgeNum"].unique() :
             chartDataFrame : pd.DataFrame = operationDataFrame[operationDataFrame.EdgeNum == edgeNum]
             figure.plot(
@@ -40,11 +40,14 @@ def line_plot(fileName : str) :
             )
             figure.set_xlabel("FileSize [MB]")
             figure.set_ylabel("Time [s]")
-        
+            figure.tick_params(axis='x', colors='#C6EAC9')
+            figure.tick_params(axis='y', colors='#C6EAC9')
+            figure.xaxis.label.set_color('#C6EAC9')
+            figure.yaxis.label.set_color('#C6EAC9')
         plt.legend()
-        plt.title(operation)
+        plt.title(operation).set_color('#C6EAC9')
         plt.grid()
-        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation)
+        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation, transparent=True)
 
         plt.clf()
 
@@ -59,11 +62,15 @@ def line_plot(fileName : str) :
             )
             figure.set_xlabel("FileSize [MB]")
             figure.set_ylabel("Time [s]")
+            figure.tick_params(axis='x', colors='#C6EAC9')
+            figure.tick_params(axis='y', colors='#C6EAC9')
+            figure.xaxis.label.set_color('#C6EAC9')
+            figure.yaxis.label.set_color('#C6EAC9')
         
         plt.legend()
-        plt.title(operation)
+        plt.title(operation + "_CUT").set_color('#C6EAC9')
         plt.grid()
-        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation + "_CUT")
+        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation + "_CUT", transparent=True)
         plt.clf()
     return
 

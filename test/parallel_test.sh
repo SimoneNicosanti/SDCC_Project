@@ -37,7 +37,7 @@ fi
 ./system_start.sh $2
 
 # Test Upload
-if [ $1 = "up" ]
+if [ $1 = "up_all" ]
 then
     echo "TEST UPLOAD"
     for i in $( seq 1 $MAX_RUN )
@@ -94,6 +94,37 @@ then
             echo
         done
 
+        wait
+    done
+fi
+
+
+if [ $1 = "mixed" ]
+then
+    echo "TEST MIXED"
+    for i in $( seq 1 $MAX_RUN )
+    do
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 10mb_test.txt -e $2 -w Parallel_Mixed.csv & 
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 100mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 20mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 30mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 10mb_test.txt -e $2 -w Parallel_Mixed.csv & 
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 250mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 250mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 250mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 20mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 30mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 20mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 100mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 5mb_test.txt -e $2  -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 20mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 5mb_test.txt -e $2  -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 10mb_test.txt -e $2 -w Parallel_Mixed.csv & 
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 10mb_test.txt -e $2 -w Parallel_Mixed.csv & 
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 100mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o download -f 30mb_test.txt -e $2 -w Parallel_Mixed.csv &
+        docker exec -t sdcc_project-client-1 python3 Main.py -u test -p test -o upload -f 5mb_test.txt -e $2  -w Parallel_Mixed.csv &
+        
         wait
     done
 fi
