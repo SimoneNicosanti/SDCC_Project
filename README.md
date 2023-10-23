@@ -17,12 +17,11 @@ Il sistema è formato dalle seguenti componenti:
 Il progetto usa **Docker** e **Docker Compose** per istanziare le diverse componenti
 
 ## Deployment
-Per fare il deployment in locale del progetto eseguire:
+Per fare il deployment nel docker engine locale è stato preparato uno script nella directory */test* che permette di mandare in esecuzione il sistema nella sua interezza:
 ```bash
 ./system_start.sh <numeroEdgeDesiderati>
 ```
-Dalla directory */test*
-
+Si esegua il comando dalla directory */test*
 
 ## Esecuzione delle operazioni
 Per eseguire le operazioni, eseguire il comando
