@@ -17,7 +17,7 @@ def sequential_data_analyze() :
 
 
 def line_plot(fileName : str) :
-    dataframe : pd.DataFrame = pd.read_csv("../docker/Results/" + fileName + ".csv")
+    dataframe : pd.DataFrame = pd.read_csv("./Results/" + fileName + ".csv")
     
     renamedDataframe = dataframe.rename(columns = {"FileSize [MB]" : "FileSize", "Time [s]" : "Time"})
     # renamedDataframe = renamedDataframe[renamedDataframe.FileSize < 100]
@@ -47,7 +47,7 @@ def line_plot(fileName : str) :
         plt.legend()
         plt.title(operation).set_color('#C6EAC9')
         plt.grid()
-        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation, transparent=True)
+        plt.savefig("./Results/Charts/" + fileName + "/" + operation, transparent=True)
 
         plt.clf()
 
@@ -70,12 +70,12 @@ def line_plot(fileName : str) :
         plt.legend()
         plt.title(operation + "_CUT").set_color('#C6EAC9')
         plt.grid()
-        plt.savefig("../docker/Results/Charts/" + fileName + "/" + operation + "_CUT", transparent=True)
+        plt.savefig("./Results/Charts/" + fileName + "/" + operation + "_CUT", transparent=True)
         plt.clf()
     return
 
 def box_plot(fileName : str) :
-    dataframe : pd.DataFrame = pd.read_csv("../docker/Results/" + fileName + ".csv")
+    dataframe : pd.DataFrame = pd.read_csv("./Results/" + fileName + ".csv")
     
     renamedDataFrame = dataframe.rename(columns = {"FileSize [MB]" : "FileSize", "Time [s]" : "Time"})
     # renamedDataframe = renamedDataframe[renamedDataframe.FileSize < 100]
@@ -107,7 +107,7 @@ def box_plot(fileName : str) :
         figure.suptitle(operation)
         figure.subplots_adjust(wspace = 0, hspace = 0)
         figure.tight_layout()
-        figure.savefig("../docker/Results/Charts/" + fileName + "/" + operation + "_BOX")
+        figure.savefig("./Results/Charts/" + fileName + "/" + operation + "_BOX")
         figure.clf()
         plt.clf()
     return
